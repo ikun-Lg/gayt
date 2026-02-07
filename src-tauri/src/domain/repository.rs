@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryInfo {
     pub path: String,
     pub name: String,
@@ -14,6 +15,7 @@ pub struct RepositoryInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BranchInfo {
     pub current: String,
     pub ahead: usize,
@@ -26,6 +28,7 @@ pub struct BranchInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LocalBranch {
     pub name: String,
     pub is_head: bool,
@@ -33,6 +36,7 @@ pub struct LocalBranch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommitInfo {
     pub id: String,
     pub short_id: String,

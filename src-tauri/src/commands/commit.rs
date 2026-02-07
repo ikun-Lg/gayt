@@ -132,6 +132,30 @@ fn commit_impl(repo: &Repository, message: &str) -> Result<String> {
     Ok(format!("{:.7}", oid))
 }
 
+/// Revoke the latest commit (soft reset to HEAD~1)
+#[tauri::command]
+pub async fn revoke_latest_commit(path: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    revoke_latest_commit_impl(&repo).map_err(|e| e.to_string())
+}
+
+fn revoke_latest_commit_impl(repo: &Repository) -> Result<()> {
+    let head = repo.head()?;
+    let head_commit = head.peel_to_commit()?;
+
+    if head_commit.parent_count() == 0 {
+        return Err(AppError::InvalidInput("Cannot revoke initial commit".to_string()));
+    }
+
+    let parent = head_commit.parent(0)?;
+
+    // Soft reset: move HEAD to parent, keep index and working directory changes
+    // This effectively "undoes" the commit but keeps changes staged
+    repo.reset(parent.as_object(), git2::ResetType::Soft, None)?;
+
+    Ok(())
+}
+
 /// Batch commit multiple repositories
 #[tauri::command]
 pub async fn batch_commit(paths: Vec<String>, message: String) -> std::result::Result<BatchCommitResult, String> {

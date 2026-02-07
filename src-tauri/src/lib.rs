@@ -27,6 +27,7 @@ pub fn run() {
             stage_all,
             unstage_all,
             commit,
+            revoke_latest_commit,
             batch_commit,
             generate_commit_message,
         ])

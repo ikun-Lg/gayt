@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepoStatus {
     pub staged: Vec<StatusItem>,
     pub unstaged: Vec<StatusItem>,
@@ -32,6 +33,7 @@ impl RepoStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusItem {
     pub path: String,
     pub status: FileStatus,
@@ -67,6 +69,7 @@ impl From<git2::Status> for FileStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommitSuggestion {
     pub r#type: CommitType,
     pub scope: Option<String>,

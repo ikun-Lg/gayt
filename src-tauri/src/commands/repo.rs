@@ -193,8 +193,13 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
                 // Get name before consuming the branch
                 let name = upstream_branch.name()?.map(|s| s.to_string());
 
-                // 分支有 upstream 配置，说明已经发布过
-                (name, true)
+                // 分支有 upstream 配置，且 upstream 分支名包含当前分支名（忽略大小写），才算已发布
+                let is_published = name.as_ref().map_or(false, |n| {
+                    let n = n.to_lowercase();
+                    let b = branch_name.to_lowercase();
+                    n == b || n.ends_with(&format!("/{}", b))
+                });
+                (name, is_published)
             } else {
                 (None, false)
             }

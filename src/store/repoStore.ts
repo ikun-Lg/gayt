@@ -44,6 +44,7 @@ interface RepoStore {
   unstageAll: (repoPath: string) => Promise<void>;
 
   commit: (repoPath: string, message: string) => Promise<string>;
+  revokeLatestCommit: (repoPath: string) => Promise<void>;
   batchCommit: (repoPaths: string[], message: string) => Promise<BatchCommitResult>;
 
   switchBranch: (path: string, branchName: string) => Promise<void>;
@@ -235,6 +236,12 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     await get().refreshStatus(repoPath);
     await get().refreshBranchInfo(repoPath);
     return result;
+  },
+
+  revokeLatestCommit: async (repoPath) => {
+    await invoke('revoke_latest_commit', { path: repoPath });
+    await get().refreshStatus(repoPath);
+    await get().refreshBranchInfo(repoPath);
   },
 
   batchCommit: async (repoPaths, message) => {

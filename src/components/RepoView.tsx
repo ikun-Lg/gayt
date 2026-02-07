@@ -3,7 +3,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { FileList } from './FileList';
 import { CommitPanel } from './CommitPanel';
 import { BranchSelector } from './BranchSelector';
-import { AlertCircle, Upload } from 'lucide-react';
+import { AlertCircle, Upload, RotateCcw } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
@@ -15,10 +15,11 @@ interface RepoViewProps {
 }
 
 export function RepoView({ repoPath }: RepoViewProps) {
-  const { repositories, pushBranch, refreshBranchInfo, currentBranchInfo } = useRepoStore();
+  const { repositories, pushBranch, refreshBranchInfo, currentBranchInfo, revokeLatestCommit } = useRepoStore();
   const { gitUsername: savedUsername, gitPassword } = useSettingsStore();
   const repo = repositories.find((r) => r.path === repoPath);
   const [isPushing, setIsPushing] = useState(false);
+  const [isRevoking, setIsRevoking] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [gitUsername, setGitUsername] = useState<string>(savedUsername || '');
 
@@ -76,6 +77,28 @@ export function RepoView({ repoPath }: RepoViewProps) {
     }
   };
 
+  const handleRevoke = async () => {
+    try {
+      const { ask } = await import('@tauri-apps/plugin-dialog');
+      const confirmed = await ask('确定要撤回最后一次提交吗？\n\n此操作将撤销最后一次提交，但保留所有更改在暂存区中。', {
+        title: '确认撤回提交',
+        kind: 'warning',
+        okLabel: '撤回',
+        cancelLabel: '取消'
+      });
+      
+      if (!confirmed) return;
+    
+      setIsRevoking(true);
+      await revokeLatestCommit(repoPath);
+    } catch (e) {
+      console.error('撤回失败:', e);
+      setPushError(String(e));
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
   return (
     <div id="repo-view-container" className="flex flex-col h-full animate-enter">
       {/* Header */}
@@ -103,16 +126,28 @@ export function RepoView({ repoPath }: RepoViewProps) {
             <span className="text-xs font-medium text-destructive bg-destructive/10 px-2 py-1 rounded-md animate-shake">{pushError}</span>
           )}
           {needPush && (
-            <Button
-              size="sm"
-              variant="default"
-              onClick={handlePush}
-              disabled={isPushing}
-              className="shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 active:scale-95 btn-tactile"
-            >
-              <Upload className={cn("w-4 h-4 mr-2", isPushing && "animate-pulse")} />
-              {isPushing ? '正在推送...' : `推送变更 (${currentBranchInfo?.ahead || repo.ahead})`}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRevoke}
+                disabled={isRevoking || isPushing}
+                className="shadow-sm hover:shadow-md transition-all duration-300 active:scale-95 btn-tactile bg-background/50 backdrop-blur-sm"
+              >
+                <RotateCcw className={cn("w-4 h-4 mr-2", isRevoking && "animate-spin")} style={{ animationDirection: 'reverse' }} />
+                {isRevoking ? '撤回中...' : '撤回提交'}
+              </Button>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handlePush}
+                disabled={isPushing || isRevoking}
+                className="shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 active:scale-95 btn-tactile"
+              >
+                <Upload className={cn("w-4 h-4 mr-2", isPushing && "animate-pulse")} />
+                {isPushing ? '正在推送...' : `推送变更 (${currentBranchInfo?.ahead || repo.ahead})`}
+              </Button>
+            </>
           )}
         </div>
       </div>
