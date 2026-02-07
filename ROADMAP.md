@@ -34,10 +34,10 @@
 ### 目标：补齐 Git 核心操作，达到日常可用状态
 
 #### 2.1 核心 Git 操作
-- [ ] **Stash 功能**
-  - [ ] stash 保存 / stash list / stash pop / stash drop / stash apply
-  - [ ] stash 包含未跟踪文件选项
-  - [ ] UI: Stash 列表面板，快速应用/丢弃
+- [] **Stash 功能**
+  - [X] stash 保存 / stash list / stash pop / stash drop / stash apply
+  - [X] stash 包含未跟踪文件选项
+  - [X] UI: Stash 列表面板，快速应用/丢弃
 
 - [ ] **Pull 操作**
   - [ ] fetch 远程更新

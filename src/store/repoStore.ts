@@ -58,6 +58,8 @@ interface RepoStore {
   renameBranch: (path: string, oldName: string, newName: string) => Promise<void>;
   createBranch: (path: string, newBranchName: string, baseBranchName: string) => Promise<void>;
   mergeBranch: (path: string, branchName: string) => Promise<void>;
+  fetch: (path: string, remote?: string, username?: string, password?: string) => Promise<void>;
+  pull: (path: string, remote?: string, branch?: string, useRebase?: boolean, username?: string, password?: string) => Promise<void>;
   
   stashSave: (path: string, message?: string, includeUntracked?: boolean) => Promise<void>;
   stashApply: (path: string, index: number) => Promise<void>;
@@ -343,6 +345,32 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     await get().refreshStatus(path);
     await get().refreshBranchInfo(path);
     await get().loadCommitHistory(path);
+  },
+
+  fetch: async (path, remote = 'origin', username, password) => {
+    await invoke('fetch_remote', { path, remote, username, password });
+    await get().refreshBranchInfo(path);
+    await get().loadCommitHistory(path);
+  },
+
+  pull: async (path, remote = 'origin', branch, useRebase = false, username, password) => {
+    // If branch is not specified, use current branch
+    const targetBranch = branch || get().currentBranchInfo?.current;
+    if (!targetBranch) throw new Error("No branch selected");
+
+    await invoke('pull_branch', { 
+      path, 
+      remote, 
+      branch: targetBranch, 
+      useRebase, 
+      username, 
+      password 
+    });
+    
+    await get().refreshStatus(path);
+    await get().refreshBranchInfo(path);
+    await get().loadCommitHistory(path);
+    await get().loadLocalBranches(path);
   },
 
   stashSave: async (path, message, includeUntracked = false) => {

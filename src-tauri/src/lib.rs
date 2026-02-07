@@ -26,6 +26,8 @@ pub fn run() {
             create_branch,
             get_file_diff,
             merge_branch,
+            fetch_remote,
+            pull_branch,
             // Commit commands
             stage_files,
             unstage_files,

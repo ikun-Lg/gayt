@@ -753,3 +753,167 @@ fn merge_branch_impl(repo: &Repository, branch_name: &str) -> Result<()> {
 
     Ok(())
 }
+
+/// Fetch from remote
+#[tauri::command]
+pub async fn fetch_remote(
+    path: String,
+    remote: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    fetch_remote_impl(&repo, &remote, username, password).map_err(|e| e.to_string())
+}
+
+fn fetch_remote_impl(
+    repo: &Repository,
+    remote: &str,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<()> {
+    // Find the remote
+    let mut remote_obj = repo.find_remote(remote)
+        .map_err(|_| AppError::InvalidInput(format!("Remote '{}' not found", remote)))?;
+
+    // Get repository config for credential helper
+    let config = repo.config()?;
+
+    // Clone the username/password for the callback
+    let auth_username = username.clone();
+    let auth_password = password.clone();
+
+    // Set up remote callbacks for authentication
+    let mut callbacks = git2::RemoteCallbacks::new();
+
+    // Handle credentials for SSH/HTTPS
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        // Get username from URL or default to "git"
+        let default_username = username_from_url.unwrap_or("git");
+
+        // If username and password are provided, use them
+        if let (Some(user), Some(pass)) = (&auth_username, &auth_password) {
+            return git2::Cred::userpass_plaintext(user, pass);
+        }
+
+        // Try different authentication methods based on what's allowed
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            // Try SSH agent first for SSH URLs
+            git2::Cred::ssh_key_from_agent(default_username)
+        } else if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            // For HTTPS, try to use git-credential-helper
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            // Try default credential helper
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else {
+            Err(git2::Error::from_str("no authentication method available"))
+        }
+    });
+
+    // Configure fetch options
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    // Perform the fetch
+    // Default refspec is usually configured for the remote, so we can pass empty refspec list to use default
+    remote_obj.fetch(&[] as &[&str], Some(&mut fetch_options), None)?;
+
+    Ok(())
+}
+
+/// Pull from remote (fetch + merge)
+#[tauri::command]
+pub async fn pull_branch(
+    path: String,
+    remote: String,
+    branch: String,
+    use_rebase: bool,
+    username: Option<String>,
+    password: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    pull_branch_impl(&repo, &remote, &branch, use_rebase, username, password).map_err(|e| e.to_string())
+}
+
+fn pull_branch_impl(
+    repo: &Repository,
+    remote: &str,
+    branch: &str,
+    use_rebase: bool,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<()> {
+    // 1. Fetch first
+    fetch_remote_impl(repo, remote, username, password)?;
+
+    // 2. Prepare for merge/rebase
+    let remote_branch_name = format!("{}/{}", remote, branch);
+    let fetch_head_obj = repo.revparse_single(&remote_branch_name)
+        .map_err(|_| AppError::InvalidInput(format!("Remote branch '{}' not found", remote_branch_name)))?;
+    
+    let fetch_head_commit = fetch_head_obj.peel_to_commit()?;
+    let annotated_commit = repo.find_annotated_commit(fetch_head_commit.id())?;
+
+    // 3. Merge analysis
+    let (analysis, _) = repo.merge_analysis(&[&annotated_commit])?;
+
+    if analysis.is_up_to_date() {
+        return Ok(());
+    } else if analysis.is_fast_forward() {
+        // Fast-forward merge
+        let mut reference = repo.head()?;
+        let name = match reference.name() {
+            Some(n) => n.to_string(),
+            None => return Err(AppError::InvalidInput("HEAD is not a reference".to_string())),
+        };
+        
+        let target_id = annotated_commit.id();
+        reference.set_target(target_id, "Fast-forward pull")?;
+        
+        // Checkout the new head
+        let obj = repo.find_object(target_id, None)?;
+        repo.checkout_tree(&obj, None)?;
+        repo.set_head(&name)?;
+        
+    } else if analysis.is_normal() {
+        if use_rebase {
+             // For now, we only support merge. Rebase in libgit2 is complex.
+             return Err(AppError::InvalidInput("Rebase strategy not yet fully supported in this backend. Please use Merge strategy.".to_string()));
+        }
+
+        // Merge commit
+        let head_commit = repo.head()?.peel_to_commit()?;
+        let merge_commit = repo.find_commit(annotated_commit.id())?;
+        
+        repo.merge(&[&annotated_commit], None, None)?;
+        let mut index = repo.index()?;
+        
+        if index.has_conflicts() {
+            return Err(AppError::MergeConflict);
+        }
+        
+        let tree_id = index.write_tree_to(repo)?;
+        let tree = repo.find_tree(tree_id)?;
+        
+        let signature = repo.signature()?;
+        let message = format!("Merge remote-tracking branch '{}'", remote_branch_name);
+        
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            &message,
+            &tree,
+            &[&head_commit, &merge_commit],
+        )?;
+        
+        // Cleanup merge state
+        repo.cleanup_state()?;
+        
+        // Checkout the new state
+        repo.checkout_index(None, None)?;
+    }
+
+    Ok(())
+}

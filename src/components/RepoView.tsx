@@ -25,7 +25,9 @@ type ViewMode = 'changes' | 'history' | 'stashes';
 export function RepoView({ repoPath }: RepoViewProps) {
   const { 
     repositories, 
-    pushBranch, 
+    pushBranch,
+    fetch,
+    pull, 
     refreshBranchInfo, 
     currentBranchInfo, 
     revokeLatestCommit, 
@@ -42,6 +44,8 @@ export function RepoView({ repoPath }: RepoViewProps) {
   
   const [viewMode, setViewMode] = useState<ViewMode>('changes');
   const [isPushing, setIsPushing] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [gitUsername, setGitUsername] = useState<string>(savedUsername || '');
@@ -73,6 +77,57 @@ export function RepoView({ repoPath }: RepoViewProps) {
 
   const needPush = (currentBranchInfo?.needPush ?? false) || repo.ahead > 0;
   const currentBranch = currentBranchInfo?.current || repo.branch || '';
+
+  const handleFetch = async () => {
+    if (!gitPassword) {
+      setPushError('请先在设置中配置 Git Token');
+      return;
+    }
+    if (!gitUsername) {
+      setPushError('请先在设置中配置 Git 用户名');
+      return;
+    }
+
+    setIsFetching(true);
+    setPushError(null);
+    try {
+      await fetch(repoPath, 'origin', gitUsername, gitPassword);
+    } catch (e) {
+      console.error('Fetch failed:', e);
+      setPushError(String(e));
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const handlePull = async () => {
+    if (!gitPassword) {
+      setPushError('请先在设置中配置 Git Token');
+      return;
+    }
+    if (!gitUsername) {
+      setPushError('请先在设置中配置 Git 用户名');
+      return;
+    }
+
+    setIsPulling(true);
+    setPushError(null);
+    try {
+      await pull(repoPath, 'origin', undefined, false, gitUsername, gitPassword);
+    } catch (e) {
+      console.error('Pull failed:', e);
+      setPushError(String(e));
+       // 触发屏幕晃动反馈
+       const element = document.getElementById('repo-view-container');
+       if (element) {
+         element.classList.remove('animate-shake');
+         void element.offsetWidth; // trigger reflow
+         element.classList.add('animate-shake');
+       }
+    } finally {
+      setIsPulling(false);
+    }
+  };
 
   const handlePush = async () => {
     if (!gitPassword) {
@@ -147,6 +202,32 @@ export function RepoView({ repoPath }: RepoViewProps) {
            </div>
            
            <div className="flex items-center gap-1.5 ml-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 gap-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+              onClick={handleFetch}
+              disabled={isFetching}
+              title="获取远程更新"
+            >
+              <Download className={cn("w-3 h-3", isFetching && "animate-bounce")} />
+              {isFetching ? '获取中...' : 'Fetch'}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost" 
+              className="h-6 gap-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+              onClick={handlePull}
+              disabled={isPulling}
+              title="拉取远程更新并合并"
+            >
+              <Download className={cn("w-3 h-3", isPulling && "animate-bounce")} />
+              {isPulling ? '拉取中...' : 'Pull'}
+            </Button>
+
+            <div className="w-px h-3 bg-border/50 mx-1" />
+
             {isPushing ? (
               <Badge variant="outline" className="h-6 gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
                 <Upload className="w-3 h-3 animate-bounce" />
