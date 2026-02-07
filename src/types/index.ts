@@ -99,6 +99,14 @@ export interface StashInfo {
   id: string;
 }
 
+export interface TagInfo {
+  name: string;
+  message: string | null;
+  target: string;
+  tagger: string | null;
+  date: number | null;
+}
+
 // Settings types
 export interface Settings {
   workDir: string | null;

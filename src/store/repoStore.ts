@@ -10,6 +10,7 @@ import type {
   LocalBranch,
   ReviewResult,
   StashInfo,
+  TagInfo,
 } from '../types';
 
 interface RepoStore {
@@ -24,6 +25,7 @@ interface RepoStore {
   isLoading: boolean;
   error: string | null;
   stashes: StashInfo[];
+  tags: TagInfo[];
 
   // Actions
   setRepositories: (repos: Repository[]) => void;
@@ -40,6 +42,7 @@ interface RepoStore {
   loadLocalBranches: (path: string) => Promise<void>;
   loadCommitHistory: (path: string, limit?: number) => Promise<void>;
   loadStashes: (path: string) => Promise<void>;
+  loadTags: (path: string) => Promise<void>;
 
   // Git operations
   stageFile: (repoPath: string, filePath: string) => Promise<void>;
@@ -67,6 +70,11 @@ interface RepoStore {
   stashPop: (path: string, index: number) => Promise<void>;
   stashDrop: (path: string, index: number) => Promise<void>;
 
+  createTag: (path: string, name: string, message?: string, target?: string) => Promise<void>;
+  deleteTag: (path: string, name: string) => Promise<void>;
+  pushTag: (path: string, tagName: string, remote?: string, username?: string, password?: string) => Promise<void>;
+  deleteRemoteTag: (path: string, tagName: string, remote?: string, username?: string, password?: string) => Promise<void>;
+
   generateCommitMessage: (repoPath: string, diffContent?: string) => Promise<CommitSuggestion>;
   reviewCode: (repoPath: string, diffContent?: string) => Promise<ReviewResult>;
   
@@ -87,6 +95,7 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   isLoading: false,
   error: null,
   stashes: [],
+  tags: [],
   selectedFile: null,
   selectedFileDiff: null,
   
@@ -100,13 +109,15 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
       currentBranchInfo: null, 
       localBranches: [],
       selectedFile: null,
-      selectedFileDiff: null
+      selectedFileDiff: null,
+      tags: [],
     });
     if (path) {
       get().refreshStatus(path);
       get().refreshBranchInfo(path);
       get().loadLocalBranches(path);
       get().loadStashes(path);
+      get().loadTags(path);
     }
   },
 
@@ -467,5 +478,32 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     } finally {
       processUnlisten();
     }
+  },
+
+  loadTags: async (path) => {
+    try {
+      const tags = await invoke<TagInfo[]>('get_tags', { path });
+      set({ tags });
+    } catch (e) {
+      console.error('Failed to load tags:', e);
+    }
+  },
+
+  createTag: async (path, name, message, target) => {
+    await invoke('create_tag', { path, name, message, target });
+    await get().loadTags(path);
+  },
+
+  deleteTag: async (path, name) => {
+    await invoke('delete_tag', { path, name });
+    await get().loadTags(path);
+  },
+
+  pushTag: async (path, tagName, remote = 'origin', username, password) => {
+    await invoke('push_tag', { path, tagName, remote, username, password });
+  },
+
+  deleteRemoteTag: async (path, tagName, remote = 'origin', username, password) => {
+    await invoke('delete_remote_tag', { path, tagName, remote, username, password });
   },
 }));

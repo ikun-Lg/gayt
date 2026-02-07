@@ -66,3 +66,13 @@ pub struct StashInfo {
     pub message: String,
     pub id: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagInfo {
+    pub name: String,
+    pub message: Option<String>,
+    pub target: String,
+    pub tagger: Option<String>,
+    pub date: Option<i64>,
+}

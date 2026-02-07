@@ -1,4 +1,4 @@
-use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo, LocalBranch};
+use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo, LocalBranch, TagInfo};
 use crate::error::{AppError, Result};
 use git2::{Repository, StatusOptions};
 use ignore::WalkBuilder;
@@ -914,6 +914,209 @@ fn pull_branch_impl(
         // Checkout the new state
         repo.checkout_index(None, None)?;
     }
+
+    Ok(())
+}
+
+/// Get all tags for a repository
+#[tauri::command]
+pub async fn get_tags(path: String) -> std::result::Result<Vec<TagInfo>, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    get_tags_impl(&repo).map_err(|e| e.to_string())
+}
+
+fn get_tags_impl(repo: &Repository) -> Result<Vec<TagInfo>> {
+    let tag_names = repo.tag_names(None)?;
+    let mut tags = Vec::new();
+
+    for name in tag_names.iter().flatten() {
+        if let Ok(obj) = repo.revparse_single(name) {
+            let mut message: Option<String> = None;
+            let mut tagger: Option<String> = None;
+            let mut date: Option<i64> = None;
+
+            // Check if it's an annotated tag
+            if let Some(tag) = obj.as_tag() {
+                message = tag.message().map(|s| s.to_string());
+                if let Some(sig) = tag.tagger() {
+                    tagger = sig.name().map(|s| s.to_string());
+                    date = Some(sig.when().seconds());
+                }
+            } else if let Ok(_commit) = obj.peel_to_commit() {
+                // Lightweight tag points directly to commit
+            }
+
+            // Target commit SHA
+            let target = obj.peel_to_commit()?.id().to_string();
+
+            tags.push(TagInfo {
+                name: name.to_string(),
+                message,
+                target,
+                tagger,
+                date,
+            });
+        }
+    }
+    
+    // Sort tags by date (descending) or name
+    tags.sort_by(|a, b| {
+        // Prefer date if available
+        match (a.date, b.date) {
+            (Some(da), Some(db)) => db.cmp(&da), // Descending
+            _ => b.name.cmp(&a.name), // Fallback to name
+        }
+    });
+
+    Ok(tags)
+}
+
+/// Create a new tag
+#[tauri::command]
+pub async fn create_tag(
+    path: String,
+    name: String,
+    message: Option<String>,
+    target: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    create_tag_impl(&repo, &name, message, target).map_err(|e| e.to_string())
+}
+
+fn create_tag_impl(repo: &Repository, name: &str, message: Option<String>, target: Option<String>) -> Result<()> {
+    // Get the target object
+    let obj = if let Some(oid_str) = target {
+        repo.find_object(git2::Oid::from_str(&oid_str)?, None)?
+    } else {
+        repo.head()?.peel(git2::ObjectType::Any)?
+    };
+
+    if let Some(msg) = message {
+        // Annotated tag
+        let signature = repo.signature()?;
+        repo.tag(name, &obj, &signature, &msg, false)?;
+    } else {
+        // Lightweight tag
+        repo.tag_lightweight(name, &obj, false)?;
+    }
+
+    Ok(())
+}
+
+/// Delete a tag
+#[tauri::command]
+pub async fn delete_tag(path: String, name: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    repo.tag_delete(&name).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Push a tag to remote
+#[tauri::command]
+pub async fn push_tag(
+    path: String,
+    tag_name: String,
+    remote: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    push_tag_impl(&repo, &tag_name, &remote, username, password).map_err(|e| e.to_string())
+}
+
+fn push_tag_impl(
+    repo: &Repository,
+    tag_name: &str,
+    remote: &str,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<()> {
+    let mut remote_obj = repo.find_remote(remote)
+        .map_err(|_| AppError::InvalidInput(format!("Remote '{}' not found", remote)))?;
+
+    // Refspec for pushing a tag
+    let refspec = format!("refs/tags/{}:refs/tags/{}", tag_name, tag_name);
+
+    let config = repo.config()?;
+    let auth_username = username.clone();
+    let auth_password = password.clone();
+
+    let mut callbacks = git2::RemoteCallbacks::new();
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        let default_username = username_from_url.unwrap_or("git");
+        if let (Some(user), Some(pass)) = (&auth_username, &auth_password) {
+            return git2::Cred::userpass_plaintext(user, pass);
+        }
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            git2::Cred::ssh_key_from_agent(default_username)
+        } else if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else {
+            Err(git2::Error::from_str("no authentication method available"))
+        }
+    });
+
+    let mut push_options = git2::PushOptions::new();
+    push_options.remote_callbacks(callbacks);
+
+    remote_obj.push(&[&refspec], Some(&mut push_options))?;
+
+    Ok(())
+}
+
+/// Delete a remote tag
+#[tauri::command]
+pub async fn delete_remote_tag(
+    path: String,
+    tag_name: String,
+    remote: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    delete_remote_tag_impl(&repo, &tag_name, &remote, username, password).map_err(|e| e.to_string())
+}
+
+fn delete_remote_tag_impl(
+    repo: &Repository,
+    tag_name: &str,
+    remote: &str,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<()> {
+    let mut remote_obj = repo.find_remote(remote)
+        .map_err(|_| AppError::InvalidInput(format!("Remote '{}' not found", remote)))?;
+
+    // Refspec for deleting a remote ref
+    let refspec = format!(":refs/tags/{}", tag_name);
+
+    let config = repo.config()?;
+    let auth_username = username.clone();
+    let auth_password = password.clone();
+
+    let mut callbacks = git2::RemoteCallbacks::new();
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        let default_username = username_from_url.unwrap_or("git");
+        if let (Some(user), Some(pass)) = (&auth_username, &auth_password) {
+            return git2::Cred::userpass_plaintext(user, pass);
+        }
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            git2::Cred::ssh_key_from_agent(default_username)
+        } else if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else {
+            Err(git2::Error::from_str("no authentication method available"))
+        }
+    });
+
+    let mut push_options = git2::PushOptions::new();
+    push_options.remote_callbacks(callbacks);
+
+    remote_obj.push(&[&refspec], Some(&mut push_options))?;
 
     Ok(())
 }

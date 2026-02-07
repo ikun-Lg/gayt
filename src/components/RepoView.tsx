@@ -6,7 +6,8 @@ import { CommitPanel } from './CommitPanel';
 import { BranchSelector } from './BranchSelector';
 import { DiffView } from './DiffView';
 import { StashPanel } from './StashPanel';
-import { AlertCircle, Upload, RotateCcw, GitCommit, Download, GitGraph, Clock, FileDiff, Archive } from 'lucide-react';
+import { TagList } from './TagList';
+import { AlertCircle, Upload, RotateCcw, GitCommit, Download, GitGraph, Clock, FileDiff, Archive, Tag } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
@@ -20,7 +21,7 @@ interface RepoViewProps {
   repoPath: string;
 }
 
-type ViewMode = 'changes' | 'history' | 'stashes';
+type ViewMode = 'changes' | 'history' | 'stashes' | 'tags';
 
 export function RepoView({ repoPath }: RepoViewProps) {
   const { 
@@ -310,7 +311,19 @@ export function RepoView({ repoPath }: RepoViewProps) {
                 <Archive className="w-3.5 h-3.5" />
                 贮存
               </button>
-           </div>
+              <button
+                onClick={() => setViewMode('tags')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'tags' 
+                    ? "bg-background shadow-sm text-foreground" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                标签
+              </button>
+            </div>
 
            <div className="flex items-center gap-3">
              {pushError && (
@@ -490,6 +503,13 @@ export function RepoView({ repoPath }: RepoViewProps) {
         {viewMode === 'stashes' && (
            <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
              <StashPanel />
+           </div>
+        )}
+
+        {/* Tags View */}
+        {viewMode === 'tags' && (
+           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+             <TagList />
            </div>
         )}
 
