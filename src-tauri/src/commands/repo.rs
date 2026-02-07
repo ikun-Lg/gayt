@@ -1,4 +1,4 @@
-use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo};
+use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo, LocalBranch};
 use crate::error::{AppError, Result};
 use git2::{Repository, StatusOptions};
 use ignore::WalkBuilder;
@@ -179,23 +179,20 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
 
     let (ahead, behind) = get_ahead_behind(repo)?;
 
-    // Get upstream name
-    let upstream = if let Ok(branch_name) = head.shorthand().ok_or(AppError::InvalidInput("No branch name".to_string())) {
+    // Get upstream name and check if published
+    let (upstream, is_published) = if let Ok(branch_name) = head.shorthand().ok_or(AppError::InvalidInput("No branch name".to_string())) {
         if let Ok(branch_obj) = repo.find_branch(branch_name, git2::BranchType::Local) {
             if let Ok(upstream_branch) = branch_obj.upstream() {
-                if let Some(name) = upstream_branch.name()? {
-                    Some(name.to_string())
-                } else {
-                    None
-                }
+                let name = upstream_branch.name()?.map(|s| s.to_string());
+                (name, true)
             } else {
-                None
+                (None, false)
             }
         } else {
-            None
+            (None, false)
         }
     } else {
-        None
+        (None, false)
     };
 
     Ok(BranchInfo {
@@ -203,6 +200,7 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
         ahead,
         behind,
         upstream,
+        is_published,
     })
 }
 
@@ -244,3 +242,83 @@ fn get_commit_history_impl(repo: &Repository, limit: usize) -> Result<Vec<Commit
 
     Ok(commits)
 }
+
+/// Get local branches for a repository
+#[tauri::command]
+pub async fn get_local_branches(path: String) -> std::result::Result<Vec<LocalBranch>, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    get_local_branches_impl(&repo).map_err(|e| e.to_string())
+}
+
+fn get_local_branches_impl(repo: &Repository) -> Result<Vec<LocalBranch>> {
+    let mut branches = Vec::new();
+    let head = repo.head();
+
+    // Get current branch name
+    let head_name = head
+        .as_ref()
+        .ok()
+        .and_then(|h| h.shorthand().map(|s| s.to_string()));
+
+    for branch in repo.branches(Some(git2::BranchType::Local))? {
+        let (branch, _) = branch?;
+        let name = branch.name()?.unwrap_or("unknown").to_string();
+        let is_head = head_name.as_ref() == Some(&name);
+
+        let upstream = if let Ok(upstream_branch) = branch.upstream() {
+            upstream_branch.name().ok().flatten().map(|s| s.to_string())
+        } else {
+            None
+        };
+
+        branches.push(LocalBranch {
+            name,
+            is_head,
+            upstream,
+        });
+    }
+
+    // Sort: current branch first, then alphabetically
+    branches.sort_by(|a, b| {
+        if a.is_head != b.is_head {
+            b.is_head.cmp(&a.is_head)
+        } else {
+            a.name.cmp(&b.name)
+        }
+    });
+
+    Ok(branches)
+}
+
+/// Switch to a branch
+#[tauri::command]
+pub async fn switch_branch(path: String, branch_name: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    switch_branch_impl(&repo, &branch_name).map_err(|e| e.to_string())
+}
+
+fn switch_branch_impl(repo: &Repository, branch_name: &str) -> Result<()> {
+    let obj = repo.revparse_single(branch_name)?;
+    let tree = obj.peel_to_tree()?;
+    repo.checkout_tree(&tree.as_object(), None)?;
+    repo.set_head(&format!("refs/heads/{}", branch_name))?;
+    Ok(())
+}
+
+/// Publish current branch (set upstream)
+#[tauri::command]
+pub async fn publish_branch(
+    path: String,
+    branch_name: String,
+    remote: String,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    publish_branch_impl(&repo, &branch_name, &remote).map_err(|e| e.to_string())
+}
+
+fn publish_branch_impl(repo: &Repository, branch_name: &str, remote: &str) -> Result<()> {
+    let mut branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
+    branch.set_upstream(Some(&format!("{}/{}", remote, branch_name)))?;
+    Ok(())
+}
+

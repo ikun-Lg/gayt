@@ -38,6 +38,13 @@ export interface BranchInfo {
   ahead: number;
   behind: number;
   upstream: string | null;
+  isPublished: boolean;
+}
+
+export interface LocalBranch {
+  name: string;
+  isHead: boolean;
+  upstream: string | null;
 }
 
 export interface CommitInfo {

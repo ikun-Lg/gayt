@@ -1,7 +1,8 @@
 import { useRepoStore } from '../store/repoStore';
 import { FileList } from './FileList';
 import { CommitPanel } from './CommitPanel';
-import { GitBranch, AlertCircle } from 'lucide-react';
+import { BranchSelector } from './BranchSelector';
+import { AlertCircle } from 'lucide-react';
 import { Badge } from './ui/Badge';
 
 interface RepoViewProps {
@@ -21,12 +22,7 @@ export function RepoView({ repoPath }: RepoViewProps) {
         <div>
           <h1 className="text-xl font-semibold">{repo.name}</h1>
           <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-            {repo.branch && (
-              <span className="flex items-center gap-1">
-                <GitBranch className="w-3 h-3" />
-                {repo.branch}
-              </span>
-            )}
+            <BranchSelector repoPath={repoPath} />
             {(repo.ahead > 0 || repo.behind > 0) && (
               <Badge variant="outline" className="text-xs">
                 {repo.ahead > 0 && `↑${repo.ahead} `}

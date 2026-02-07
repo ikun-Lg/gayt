@@ -7,6 +7,7 @@ import type {
   CommitInfo,
   CommitSuggestion,
   BatchCommitResult,
+  LocalBranch,
 } from '../types';
 
 interface RepoStore {
@@ -16,6 +17,7 @@ interface RepoStore {
   selectedRepoPaths: Set<string>;
   currentStatus: RepoStatus | null;
   currentBranchInfo: BranchInfo | null;
+  localBranches: LocalBranch[];
   commitHistory: CommitInfo[];
   isLoading: boolean;
   error: string | null;
@@ -31,6 +33,7 @@ interface RepoStore {
   scanRepositories: (rootPath: string) => Promise<void>;
   refreshStatus: (path: string) => Promise<void>;
   refreshBranchInfo: (path: string) => Promise<void>;
+  loadLocalBranches: (path: string) => Promise<void>;
   loadCommitHistory: (path: string, limit?: number) => Promise<void>;
 
   // Git operations
@@ -42,6 +45,9 @@ interface RepoStore {
   commit: (repoPath: string, message: string) => Promise<string>;
   batchCommit: (repoPaths: string[], message: string) => Promise<BatchCommitResult>;
 
+  switchBranch: (path: string, branchName: string) => Promise<void>;
+  publishBranch: (path: string, branchName: string, remote?: string) => Promise<void>;
+
   generateCommitMessage: (repoPath: string, diffContent?: string) => Promise<CommitSuggestion>;
 }
 
@@ -52,6 +58,7 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   selectedRepoPaths: new Set(),
   currentStatus: null,
   currentBranchInfo: null,
+  localBranches: [],
   commitHistory: [],
   isLoading: false,
   error: null,
@@ -60,10 +67,11 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   setRepositories: (repos) => set({ repositories: repos }),
 
   selectRepo: (path) => {
-    set({ selectedRepoPath: path, currentStatus: null, currentBranchInfo: null });
+    set({ selectedRepoPath: path, currentStatus: null, currentBranchInfo: null, localBranches: [] });
     if (path) {
       get().refreshStatus(path);
       get().refreshBranchInfo(path);
+      get().loadLocalBranches(path);
     }
   },
 
@@ -145,6 +153,15 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     }
   },
 
+  loadLocalBranches: async (path) => {
+    try {
+      const branches = await invoke<LocalBranch[]>('get_local_branches', { path });
+      set({ localBranches: branches });
+    } catch (e) {
+      console.error('Failed to load local branches:', e);
+    }
+  },
+
   loadCommitHistory: async (path, limit = 20) => {
     try {
       const history = await invoke<CommitInfo[]>('get_commit_history', { path, limit });
@@ -195,6 +212,19 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     }
 
     return result;
+  },
+
+  switchBranch: async (path, branchName) => {
+    await invoke('switch_branch', { path, branchName });
+    await get().refreshBranchInfo(path);
+    await get().refreshStatus(path);
+    await get().loadLocalBranches(path);
+  },
+
+  publishBranch: async (path, branchName, remote = 'origin') => {
+    await invoke('publish_branch', { path, branchName, remote });
+    await get().refreshBranchInfo(path);
+    await get().loadLocalBranches(path);
   },
 
   generateCommitMessage: async (repoPath, diffContent) => {

@@ -19,6 +19,14 @@ pub struct BranchInfo {
     pub ahead: usize,
     pub behind: usize,
     pub upstream: Option<String>,
+    pub is_published: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalBranch {
+    pub name: String,
+    pub is_head: bool,
+    pub upstream: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
