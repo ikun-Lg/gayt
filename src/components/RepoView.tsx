@@ -1,27 +1,46 @@
+
 import { useRepoStore } from '../store/repoStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { FileList } from './FileList';
 import { CommitPanel } from './CommitPanel';
 import { BranchSelector } from './BranchSelector';
-import { AlertCircle, Upload, RotateCcw } from 'lucide-react';
+import { AlertCircle, Upload, RotateCcw, GitCommit, Download, GitGraph, Clock, FileDiff } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
+import { CommitGraph } from './CommitGraph';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 
 interface RepoViewProps {
   repoPath: string;
 }
 
+type ViewMode = 'changes' | 'history';
+
 export function RepoView({ repoPath }: RepoViewProps) {
-  const { repositories, pushBranch, refreshBranchInfo, currentBranchInfo, revokeLatestCommit } = useRepoStore();
+  const { 
+    repositories, 
+    pushBranch, 
+    refreshBranchInfo, 
+    currentBranchInfo, 
+    revokeLatestCommit, 
+    currentStatus, 
+    commitHistory,
+    loadCommitHistory 
+  } = useRepoStore();
   const { gitUsername: savedUsername, gitPassword } = useSettingsStore();
+
   const repo = repositories.find((r) => r.path === repoPath);
+  
+  const [viewMode, setViewMode] = useState<ViewMode>('changes');
   const [isPushing, setIsPushing] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const [gitUsername, setGitUsername] = useState<string>(savedUsername || '');
+  const [showGraph, setShowGraph] = useState(true); // Default to showing graph in history mode
 
   // Load git username from config if not saved
   useEffect(() => {
@@ -35,6 +54,13 @@ export function RepoView({ repoPath }: RepoViewProps) {
       setGitUsername(savedUsername);
     }
   }, [repoPath, savedUsername]);
+
+  // Load commit history when switching to history view
+  useEffect(() => {
+    if (viewMode === 'history') {
+      loadCommitHistory(repoPath);
+    }
+  }, [viewMode, repoPath, loadCommitHistory]);
 
   if (!repo) return null;
 
@@ -91,6 +117,10 @@ export function RepoView({ repoPath }: RepoViewProps) {
     
       setIsRevoking(true);
       await revokeLatestCommit(repoPath);
+      // Refresh history if in history mode
+      if (viewMode === 'history') {
+        loadCommitHistory(repoPath);
+      }
     } catch (e) {
       console.error('撤回失败:', e);
       setPushError(String(e));
@@ -109,69 +139,234 @@ export function RepoView({ repoPath }: RepoViewProps) {
             <BranchSelector repoPath={repoPath} />
            </div>
            
-           <div className="flex items-center gap-2">
-            {(repo.ahead > 0 || repo.behind > 0) && (
-              <Badge variant="outline" className="h-5 text-[10px] font-medium border-primary/30 text-primary px-1.5 rounded bg-primary/5">
-                {repo.ahead > 0 && `↑${repo.ahead} `}
-                {repo.behind > 0 && `↓${repo.behind}`}
+           <div className="flex items-center gap-1.5 ml-2">
+            {isPushing ? (
+              <Badge variant="outline" className="h-6 gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                <Upload className="w-3 h-3 animate-bounce" />
+                推送中...
+              </Badge>
+            ) : currentBranchInfo?.needPush ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 gap-1.5 text-xs font-normal border-amber-500/30 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
+                onClick={handlePush}
+              >
+                <Upload className="w-3 h-3" />
+                推送提交
+              </Button>
+            ) : currentBranchInfo && currentBranchInfo.ahead > 0 ? (
+               <Badge variant="outline" className="h-6 gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                <Upload className="w-3 h-3" />
+                超前 {currentBranchInfo.ahead}
+              </Badge>
+            ) : null}
+
+            {currentBranchInfo && currentBranchInfo.behind > 0 && (
+               <Badge variant="outline" className="h-6 gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20">
+                <Download className="w-3 h-3" />
+                落后 {currentBranchInfo.behind}
               </Badge>
             )}
-            {repo.hasChanges && (
-              <Badge variant="secondary" className="h-5 text-[10px] font-medium bg-amber-500/10 text-amber-600 border-amber-500/20 px-1.5 rounded gap-1">
-                <AlertCircle className="w-3 h-3" />
-                未提交的修改
-              </Badge>
-            )}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0"
+              onClick={() => refreshBranchInfo(repoPath)}
+              title="刷新状态"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </Button>
            </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          {pushError && (
-            <span className="text-xs font-medium text-destructive bg-destructive/10 px-3 py-1.5 rounded-lg animate-shake">{pushError}</span>
-          )}
-          
-          {(needPush || true) && ( /* Always show for design check, logic remains */
-             <div className="flex items-center gap-2">
-                {/* Only show revoke if needed (logic from original code preserved) */}
-                {needPush && ( 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRevoke}
-                    disabled={isRevoking || isPushing}
-                    className="h-8 shadow-sm hover:bg-destructive/5 hover:text-destructive hover:border-destructive/30 transition-all btn-tactile"
-                    title="撤销上次提交"
-                  >
-                    <RotateCcw className={cn("w-3.5 h-3.5", isRevoking && "animate-spin")} style={{ animationDirection: 'reverse' }} />
-                  </Button>
+        {/* View Switcher & Actions */}
+        <div className="flex items-center gap-4">
+           {/* View Modes */}
+           <div className="flex items-center p-1 bg-muted/50 rounded-lg border border-border/50">
+              <button
+                onClick={() => setViewMode('changes')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'changes' 
+                    ? "bg-background shadow-sm text-foreground" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
                 )}
-                
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={handlePush}
-                  disabled={isPushing || isRevoking || !needPush}
-                  className={cn(
-                    "h-8 shadow-sm transition-all btn-tactile font-medium px-4",
-                    needPush ? "opacity-100" : "opacity-50 grayscale"
-                  )}
-                >
-                  <Upload className={cn("w-3.5 h-3.5 mr-2", isPushing && "animate-pulse")} />
-                  {isPushing ? '推送中...' : '提交推送'}
-                </Button>
-             </div>
-          )}
+              >
+                <FileDiff className="w-3.5 h-3.5" />
+                变更
+                {repo.hasChanges && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+              </button>
+              <button
+                onClick={() => setViewMode('history')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'history' 
+                    ? "bg-background shadow-sm text-foreground" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                历史
+              </button>
+           </div>
+
+           <div className="flex items-center gap-3">
+             {pushError && (
+               <span className="text-xs font-medium text-destructive bg-destructive/10 px-3 py-1.5 rounded-lg animate-shake">{pushError}</span>
+             )}
+             
+             {/* Global Actions (mostly for Changes view) */}
+             {viewMode === 'changes' && (needPush || true) && (
+                <div className="flex items-center gap-2">
+                   {needPush && ( 
+                     <Button
+                       size="sm"
+                       variant="outline"
+                       onClick={handleRevoke}
+                       disabled={isRevoking || isPushing}
+                       className="h-8 shadow-sm hover:bg-destructive/5 hover:text-destructive hover:border-destructive/30 transition-all btn-tactile"
+                       title="撤销上次提交"
+                     >
+                       <RotateCcw className={cn("w-3.5 h-3.5", isRevoking && "animate-spin")} style={{ animationDirection: 'reverse' }} />
+                     </Button>
+                   )}
+                   
+                   <Button
+                     size="sm"
+                     variant="default"
+                     onClick={handlePush}
+                     disabled={isPushing || isRevoking || !needPush}
+                     className={cn(
+                       "h-8 shadow-sm transition-all btn-tactile font-medium px-4",
+                       needPush ? "opacity-100" : "opacity-50 grayscale"
+                     )}
+                   >
+                     <Upload className={cn("w-3.5 h-3.5 mr-2", isPushing && "animate-pulse")} />
+                     {isPushing ? '推送中...' : '提交推送'}
+                   </Button>
+                </div>
+             )}
+           </div>
         </div>
       </div>
 
-      {/* File list */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
-        <FileList repoPath={repoPath} />
-      </div>
+      {/* Main Content Area */}
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        
+        {/* Changes View */}
+        {viewMode === 'changes' && (
+           <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+             {/* File status summary */}
+             {(currentStatus && (currentStatus.staged.length > 0 || currentStatus.unstaged.length > 0 || currentStatus.untracked.length > 0)) && (
+                <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
+                   <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                      <span className="text-sm font-medium">未提交的修改</span>
+                      <Badge variant="secondary" className="lc-badge">
+                         {(currentStatus.staged.length || 0) + (currentStatus.unstaged.length || 0) + (currentStatus.untracked.length || 0)}
+                      </Badge>
+                   </div>
+                </div>
+             )}
+             
+             <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
+               <FileList repoPath={repoPath} />
+             </div>
+             
+             <div className="shrink-0 z-20">
+               <CommitPanel repoPath={repoPath} mode="single" />
+             </div>
+           </div>
+        )}
 
-      {/* Commit panel */}
-      <div className="shrink-0 z-20">
-        <CommitPanel repoPath={repoPath} mode="single" />
+        {/* History View */}
+        {viewMode === 'history' && (
+           <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+             <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
+               <div className="text-sm font-medium text-muted-foreground">提交历史</div>
+               <Button
+                 size="sm"
+                 variant={showGraph ? "secondary" : "ghost"}
+                 className="h-6 gap-1.5 text-xs"
+                 onClick={() => setShowGraph(!showGraph)}
+               >
+                 <GitGraph className="w-3.5 h-3.5" />
+                 {showGraph ? '隐藏图表' : '显示图表'}
+               </Button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+                {showGraph && commitHistory.length > 0 && (
+                   <CommitGraph commits={commitHistory} rowHeight={56} />
+                )}
+                
+                <div className={cn("divide-y divide-border/40", showGraph && "pl-4")}>
+                   {commitHistory.map((commit) => (
+                      <div 
+                        key={commit.id} 
+                        className={cn(
+                          "relative flex items-center gap-4 px-4 h-[56px] hover:bg-muted/30 transition-colors group",
+                          showGraph && "pl-12" // Additional padding for graph nodes
+                        )}
+                        style={{ paddingLeft: showGraph ? undefined : undefined }} // handled by class
+                      >
+                         <div className={cn(
+                           "flex-1 min-w-0 py-2",
+                           showGraph && "ml-4" // Push text right to avoid graph
+                         )}
+                         style={{ marginLeft: showGraph ? 24 * (Math.max((commit.refs?.length || 0), 1)) : 0 }} 
+                         // Dynamic margin based on graph width? 
+                         // Actually CommitGraph calculates width. We need to align text.
+                         // For now, let's just give a fixed margin or let the graph overlay.
+                         // The graph is absolute positioned. We need to push content.
+                         // A simple way is to use a fixed large padding if graph is on, 
+                         // OR, ask CommitGraph for width?
+                         // For MVP, valid to just use a fixed left padding or ensure graph doesn't overlap text too much.
+                         > 
+                            <div className="flex items-baseline gap-2 mb-0.5">
+                               {commit.refs && commit.refs.length > 0 && (
+                                  <div className="flex items-center gap-1">
+                                    {commit.refs.map(ref => (
+                                      <Badge key={ref} variant="outline" className="h-4 text-[9px] px-1 py-0 border-blue-500/30 text-blue-600 bg-blue-500/5">
+                                        {ref}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                               )}
+                               <span className="text-sm font-medium truncate text-foreground/90">{commit.message}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
+                               <span className="font-mono text-[10px] opacity-70">{commit.shortId}</span>
+                               <span>•</span>
+                               <span>{commit.author}</span>
+                               <span>•</span>
+                               <span>{formatDistanceToNow(new Date(commit.timestamp * 1000), { addSuffix: true, locale: zhCN })}</span>
+                            </div>
+                         </div>
+                         
+                         {/* Actions */}
+                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            {/* Copy ID */}
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navigator.clipboard.writeText(commit.id)} title="复制 Hash">
+                               <GitCommit className="w-3.5 h-3.5" />
+                            </Button>
+                         </div>
+                      </div>
+                   ))}
+                   
+                   {commitHistory.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                         <GitGraph className="w-10 h-10 mb-3 opacity-20" />
+                         <p>暂无提交记录</p>
+                      </div>
+                   )}
+                </div>
+             </div>
+           </div>
+        )}
+
       </div>
     </div>
   );

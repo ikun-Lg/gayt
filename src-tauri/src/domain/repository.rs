@@ -43,6 +43,8 @@ pub struct CommitInfo {
     pub message: String,
     pub author: String,
     pub timestamp: i64,
+    pub parents: Vec<String>,
+    pub refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

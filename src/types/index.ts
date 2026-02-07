@@ -54,6 +54,8 @@ export interface CommitInfo {
   message: string;
   author: string;
   timestamp: number;
+  parents: string[];
+  refs: string[];
 }
 
 export interface CommitSuggestion {

@@ -231,11 +231,44 @@ pub async fn get_commit_history(path: String, limit: usize) -> std::result::Resu
 }
 
 fn get_commit_history_impl(repo: &Repository, limit: usize) -> Result<Vec<CommitInfo>> {
-    let head = repo.head()?;
     let mut revwalk = repo.revwalk()?;
-    revwalk.push(head.target().ok_or(AppError::InvalidInput("No head commit".to_string()))?)?;
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    
+    // Push HEAD
+    if let Ok(head) = repo.head() {
+        if let Ok(target) = head.target().ok_or(AppError::InvalidInput("No head commit".to_string())) {
+            revwalk.push(target)?;
+        }
+    }
+
+    // Push all local branches to graph
+    // This allows us to see commits from other branches
+    if let Ok(branches) = repo.branches(Some(git2::BranchType::Local)) {
+        for branch in branches {
+            if let Ok((branch, _)) = branch {
+                if let Some(target) = branch.get().target() {
+                    revwalk.push(target)?;
+                }
+            }
+        }
+    }
 
     let mut commits = Vec::new();
+    
+    // Get all references to map commit IDs to branch names/tags
+    let mut ref_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    if let Ok(references) = repo.references() {
+        for reference in references {
+            if let Ok(reference) = reference {
+                if let Some(target) = reference.target() {
+                    let name = reference.shorthand().unwrap_or("").to_string();
+                    if !name.is_empty() && !name.starts_with("origin/") { // Filter remote refs for now to reduce clutter? Or keep them?
+                         ref_map.entry(target.to_string()).or_default().push(name);
+                    }
+                }
+            }
+        }
+    }
 
     for (i, oid) in revwalk.enumerate() {
         if i >= limit {
@@ -249,6 +282,12 @@ fn get_commit_history_impl(repo: &Repository, limit: usize) -> Result<Vec<Commit
         let author = commit.author().name().unwrap_or("Unknown").to_string();
         let message = commit.message().unwrap_or("").to_string();
         let short_id = format!("{:.7}", oid);
+        
+        // Get parents
+        let parents = commit.parent_ids().map(|id| id.to_string()).collect();
+        
+        // Get refs
+        let refs = ref_map.get(&oid.to_string()).cloned().unwrap_or_default();
 
         commits.push(CommitInfo {
             id: oid.to_string(),
@@ -256,6 +295,8 @@ fn get_commit_history_impl(repo: &Repository, limit: usize) -> Result<Vec<Commit
             message,
             author,
             timestamp,
+            parents,
+            refs,
         });
     }
 
