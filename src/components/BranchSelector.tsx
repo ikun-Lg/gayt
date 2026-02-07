@@ -2,20 +2,33 @@ import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { GitBranch, Cloud, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface BranchSelectorProps {
   repoPath: string;
 }
 
 interface AuthDialogProps {
+  repoPath: string;
   onSubmit: (username: string, password: string) => void;
   onCancel: () => void;
 }
 
-function AuthDialog({ onSubmit, onCancel }: AuthDialogProps) {
+function AuthDialog({ repoPath, onSubmit, onCancel }: AuthDialogProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoadingUsername, setIsLoadingUsername] = useState(true);
+
+  // Load default username from git config
+  useEffect(() => {
+    invoke<string | null>('get_git_username', { path: repoPath })
+      .then(name => {
+        if (name) setUsername(name);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoadingUsername(false));
+  }, [repoPath]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +52,7 @@ function AuthDialog({ onSubmit, onCancel }: AuthDialogProps) {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full mt-1 px-3 py-2 border rounded-md"
                 placeholder="git"
+                disabled={isLoadingUsername}
                 autoFocus
               />
             </div>
@@ -68,7 +82,7 @@ function AuthDialog({ onSubmit, onCancel }: AuthDialogProps) {
             <Button
               type="submit"
               className="flex-1"
-              disabled={!username || !password}
+              disabled={!username || !password || isLoadingUsername}
             >
               确认
             </Button>
@@ -98,24 +112,10 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     }
   };
 
-  const handlePublish = async () => {
-    setIsPublishing(true);
+  const handlePublish = () => {
+    // 直接显示身份验证对话框
     setErrorMessage(null);
-    try {
-      await publishBranch(repoPath, currentBranch);
-    } catch (e) {
-      const error = String(e);
-      console.error('发布分支失败:', error);
-
-      // Check if error is related to authentication
-      if (error.includes('auth') || error.includes('credential')) {
-        setShowAuthDialog(true);
-      } else {
-        setErrorMessage(error);
-      }
-    } finally {
-      setIsPublishing(false);
-    }
+    setShowAuthDialog(true);
   };
 
   const handlePublishWithAuth = async (username: string, password: string) => {
@@ -124,6 +124,8 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     setErrorMessage(null);
     try {
       await publishBranch(repoPath, currentBranch, 'origin', username, password);
+      // 发布成功，关闭下拉菜单
+      setIsOpen(false);
     } catch (e) {
       console.error('发布分支失败:', e);
       setErrorMessage(String(e));
@@ -155,6 +157,7 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
 
       {showAuthDialog && (
         <AuthDialog
+          repoPath={repoPath}
           onSubmit={handlePublishWithAuth}
           onCancel={() => setShowAuthDialog(false)}
         />

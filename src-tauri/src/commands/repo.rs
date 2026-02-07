@@ -331,6 +331,66 @@ pub async fn publish_branch(
     publish_branch_impl(&repo, &branch_name, &remote, username, password).map_err(|e| e.to_string())
 }
 
+/// Get the default username for git operations from config
+#[tauri::command]
+pub async fn get_git_username(path: String) -> std::result::Result<Option<String>, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+
+    // First try to get username from remote URL
+    if let Ok(remote) = repo.find_remote("origin") {
+        if let Some(url) = remote.url() {
+            // Parse URL to extract username
+            // Format: https://username@github.com/repo.git or https://github.com/username/repo.git
+            if let Some(parsed) = extract_username_from_url(url) {
+                return Ok(Some(parsed));
+            }
+        }
+    }
+
+    // Fall back to user.name config
+    let config = repo.config().map_err(|e| e.to_string())?;
+
+    // Try local config first
+    if let Ok(name) = config.get_string("user.name") {
+        return Ok(Some(name));
+    }
+
+    // Try global config via snapshot
+    if let Ok(global_config) = git2::Config::open_default() {
+        if let Ok(name) = global_config.get_string("user.name") {
+            return Ok(Some(name));
+        }
+    }
+
+    Ok(None)
+}
+
+fn extract_username_from_url(url: &str) -> Option<String> {
+    // Try to parse username from HTTPS URL with auth
+    // https://username@github.com/repo.git
+    if url.starts_with("https://") {
+        let rest = &url[8..];
+        if let Some(at_pos) = rest.find('@') {
+            let auth_part = &rest[..at_pos];
+            // Split by ':' in case of password: username:password@github.com
+            if let Some(colon_pos) = auth_part.find(':') {
+                Some(auth_part[..colon_pos].to_string())
+            } else {
+                Some(auth_part.to_string())
+            }
+        } else {
+            // Try to extract from path: https://github.com/username/repo.git
+            let after_slash = rest.split('/').nth(1)?;
+            Some(after_slash.to_string())
+        }
+    } else if url.starts_with("git@") {
+        // SSH URL: git@github.com:username/repo.git
+        None // SSH uses different auth
+    } else {
+        None
+    }
+}
+
 fn publish_branch_impl(
     repo: &Repository,
     branch_name: &str,
