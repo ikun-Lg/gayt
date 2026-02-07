@@ -1546,6 +1546,21 @@ fn complete_merge_impl(repo: &Repository, message: Option<String>) -> Result<()>
     Ok(())
 }
 
+/// Write content to a conflict file
+#[tauri::command]
+pub async fn write_conflict_file(
+    path: String,
+    file_path: String,
+    content: String,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    let workdir = repo.workdir().ok_or_else(|| "No workdir".to_string())?;
+    let full_path = workdir.join(file_path);
+
+    std::fs::write(&full_path, content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn trim(s: &str) -> &str {
     s.trim().trim_end_matches('\n')
 }

@@ -33,6 +33,7 @@ pub fn run() {
             get_conflict_diff,
             abort_merge,
             complete_merge,
+            write_conflict_file,
             // Commit commands
             stage_files,
             unstage_files,
