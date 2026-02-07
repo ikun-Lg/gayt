@@ -185,21 +185,16 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
     let (ahead, behind) = get_ahead_behind(repo)?;
 
     // Get upstream name and check if published
-    // A branch is considered published if:
-    // 1. It has an upstream configured
-    // 2. The upstream branch exists on the remote
+    // - is_published: 分支是否已设置 upstream（即已发布过）
+    // - need_push: 是否有待推送的提交（ahead > 0）
     let (upstream, is_published) = if let Ok(branch_name) = head.shorthand().ok_or(AppError::InvalidInput("No branch name".to_string())) {
         if let Ok(branch_obj) = repo.find_branch(branch_name, git2::BranchType::Local) {
             if let Ok(upstream_branch) = branch_obj.upstream() {
                 // Get name before consuming the branch
                 let name = upstream_branch.name()?.map(|s| s.to_string());
 
-                // Verify that the remote branch actually exists
-                // by checking if we can resolve it to a commit
-                let upstream_ref = upstream_branch.into_reference();
-                let remote_exists = upstream_ref.peel_to_commit().is_ok();
-
-                (name, remote_exists)
+                // 分支有 upstream 配置，说明已经发布过
+                (name, true)
             } else {
                 (None, false)
             }
@@ -210,12 +205,16 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
         (None, false)
     };
 
+    // need_push: 有 ahead 的提交需要推送
+    let need_push = ahead > 0;
+
     Ok(BranchInfo {
         current,
         ahead,
         behind,
         upstream,
         is_published,
+        need_push,
     })
 }
 
@@ -456,3 +455,74 @@ fn publish_branch_impl(
     Ok(())
 }
 
+/// Push commits to remote (for already published branches)
+#[tauri::command]
+pub async fn push_branch(
+    path: String,
+    branch_name: String,
+    remote: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    push_branch_impl(&repo, &branch_name, &remote, username, password).map_err(|e| e.to_string())
+}
+
+fn push_branch_impl(
+    repo: &Repository,
+    branch_name: &str,
+    remote: &str,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<()> {
+    // Find the remote
+    let mut remote_obj = repo.find_remote(remote)
+        .map_err(|_| AppError::InvalidInput(format!("Remote '{}' not found", remote)))?;
+
+    // Prepare the push refspec (push to existing remote branch)
+    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+
+    // Get repository config for credential helper
+    let config = repo.config()?;
+
+    // Clone the username/password for the callback
+    let auth_username = username.clone();
+    let auth_password = password.clone();
+
+    // Set up remote callbacks for authentication
+    let mut callbacks = git2::RemoteCallbacks::new();
+
+    // Handle credentials for SSH/HTTPS
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        // Get username from URL or default to "git"
+        let default_username = username_from_url.unwrap_or("git");
+
+        // If username and password are provided, use them
+        if let (Some(user), Some(pass)) = (&auth_username, &auth_password) {
+            return git2::Cred::userpass_plaintext(user, pass);
+        }
+
+        // Try different authentication methods based on what's allowed
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            // Try SSH agent first for SSH URLs
+            git2::Cred::ssh_key_from_agent(default_username)
+        } else if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            // For HTTPS, try to use git-credential-helper
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            // Try default credential helper
+            git2::Cred::credential_helper(&config, url, Some(default_username))
+        } else {
+            Err(git2::Error::from_str("no authentication method available"))
+        }
+    });
+
+    // Configure push options
+    let mut push_options = git2::PushOptions::new();
+    push_options.remote_callbacks(callbacks);
+
+    // Perform the push
+    remote_obj.push(&[&refspec], Some(&mut push_options))?;
+
+    Ok(())
+}

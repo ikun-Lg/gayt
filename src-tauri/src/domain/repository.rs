@@ -19,7 +19,10 @@ pub struct BranchInfo {
     pub ahead: usize,
     pub behind: usize,
     pub upstream: Option<String>,
+    /// 分支是否已发布（即设置了 upstream）
     pub is_published: bool,
+    /// 是否有待推送的提交（ahead > 0 时表示需要推送）
+    pub need_push: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

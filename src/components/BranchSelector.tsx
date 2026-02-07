@@ -1,7 +1,7 @@
 import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import { GitBranch, Cloud, Check } from 'lucide-react';
+import { GitBranch, Cloud, Check, Upload } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Store } from '@tauri-apps/plugin-store';

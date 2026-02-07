@@ -39,6 +39,7 @@ export interface BranchInfo {
   behind: number;
   upstream: string | null;
   isPublished: boolean;
+  needPush: boolean;
 }
 
 export interface LocalBranch {

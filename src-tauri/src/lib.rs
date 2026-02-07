@@ -19,6 +19,7 @@ pub fn run() {
             get_local_branches,
             switch_branch,
             publish_branch,
+            push_branch,
             get_git_username,
             // Commit commands
             stage_files,
