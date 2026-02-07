@@ -263,21 +263,21 @@ export function RepoView({ repoPath }: RepoViewProps) {
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 w-6 p-0"
+              className="h-9 w-9 p-0"
               onClick={() => refreshBranchInfo(repoPath)}
               title="刷新状态"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-5 h-5" />
             </Button>
 
             <Button
               size="sm"
               variant="ghost" 
-              className="h-6 w-6 p-0"
+              className="h-9 w-9 p-0"
               onClick={() => setIsRemoteDialogOpen(true)}
               title="远程仓库管理"
             >
-              <Globe className="w-3.5 h-3.5" />
+              <Globe className="w-5 h-5" />
             </Button>
            </div>
         </div>
