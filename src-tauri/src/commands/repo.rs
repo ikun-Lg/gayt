@@ -531,6 +531,9 @@ fn publish_branch_impl(
     let mut branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
     branch.set_upstream(Some(&format!("{}/{}", remote, branch_name)))?;
 
+    // Manually update remote-tracking reference
+    update_tracking_branch(repo, remote, branch_name)?;
+
     Ok(())
 }
 
@@ -603,6 +606,21 @@ fn push_branch_impl(
     // Perform the push
     remote_obj.push(&[&refspec], Some(&mut push_options))?;
 
+    // Manually update remote-tracking reference
+    update_tracking_branch(repo, remote, branch_name)?;
+
+    Ok(())
+}
+
+fn update_tracking_branch(repo: &Repository, remote: &str, branch_name: &str) -> Result<()> {
+    // Get the OID of the local branch
+    let local_branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
+    let oid = local_branch.get().peel_to_commit()?.id();
+
+    // Update the remote-tracking branch reference
+    let remote_ref_name = format!("refs/remotes/{}/{}", remote, branch_name);
+    repo.reference(&remote_ref_name, oid, true, "Update remote-tracking branch after push")?;
+    
     Ok(())
 }
 
