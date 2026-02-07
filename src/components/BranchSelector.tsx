@@ -4,6 +4,7 @@ import { Card } from './ui/Card';
 import { GitBranch, Cloud, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Store } from '@tauri-apps/plugin-store';
 
 interface BranchSelectorProps {
   repoPath: string;
@@ -15,23 +16,52 @@ interface AuthDialogProps {
   onCancel: () => void;
 }
 
+const STORE_PATH = 'git_credentials.json';
+
+// Save credential to store
+async function saveCredential(repoPath: string, username: string, password: string): Promise<void> {
+  const store = await Store.load(STORE_PATH);
+  const key = `credential_${repoPath}`;
+  await store.set(key, { username, password });
+  await store.save();
+}
+
+// Load credential from store
+async function loadCredential(repoPath: string): Promise<{ username: string; password: string } | null> {
+  const store = await Store.load(STORE_PATH);
+  const key = `credential_${repoPath}`;
+  const cred = await store.get<{ username: string; password: string }>(key);
+  return cred || null;
+}
+
 function AuthDialog({ repoPath, onSubmit, onCancel }: AuthDialogProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoadingUsername, setIsLoadingUsername] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Load default username from git config
+  // Load saved credential and default username
   useEffect(() => {
-    invoke<string | null>('get_git_username', { path: repoPath })
-      .then(name => {
-        if (name) setUsername(name);
+    Promise.all([
+      loadCredential(repoPath),
+      invoke<string | null>('get_git_username', { path: repoPath })
+    ])
+      .then(([savedCred, gitUsername]) => {
+        if (savedCred) {
+          setUsername(savedCred.username);
+          setPassword(savedCred.password);
+        } else if (gitUsername) {
+          setUsername(gitUsername);
+        }
       })
       .catch(console.error)
-      .finally(() => setIsLoadingUsername(false));
+      .finally(() => setIsLoading(false));
   }, [repoPath]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Save credential before submitting
+    saveCredential(repoPath, username, password).catch(console.error);
     onSubmit(username, password);
   };
 
@@ -52,22 +82,32 @@ function AuthDialog({ repoPath, onSubmit, onCancel }: AuthDialogProps) {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full mt-1 px-3 py-2 border rounded-md"
                 placeholder="git"
-                disabled={isLoadingUsername}
+                disabled={isLoading}
                 autoFocus
               />
             </div>
             <div>
               <label className="text-sm font-medium">密码 / Token</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border rounded-md"
-                placeholder="Personal Access Token"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 border rounded-md pr-8"
+                  placeholder="Personal Access Token"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              对于 GitHub，请使用 Personal Access Token 而非账户密码
+              凭据将加密保存在本地，下次使用时自动填充
             </p>
           </div>
           <div className="flex gap-2 mt-4">
@@ -76,13 +116,14 @@ function AuthDialog({ repoPath, onSubmit, onCancel }: AuthDialogProps) {
               variant="outline"
               className="flex-1"
               onClick={onCancel}
+              disabled={isLoading}
             >
               取消
             </Button>
             <Button
               type="submit"
               className="flex-1"
-              disabled={!username || !password || isLoadingUsername}
+              disabled={!username || !password || isLoading}
             >
               确认
             </Button>
@@ -94,7 +135,7 @@ function AuthDialog({ repoPath, onSubmit, onCancel }: AuthDialogProps) {
 }
 
 export function BranchSelector({ repoPath }: BranchSelectorProps) {
-  const { currentBranchInfo, localBranches, switchBranch, publishBranch, loadLocalBranches } = useRepoStore();
+  const { currentBranchInfo, localBranches, switchBranch, publishBranch, loadLocalBranches, refreshBranchInfo } = useRepoStore();
   const [isOpen, setIsOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
@@ -124,6 +165,8 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     setErrorMessage(null);
     try {
       await publishBranch(repoPath, currentBranch, 'origin', username, password);
+      // 刷新分支信息
+      await refreshBranchInfo(repoPath);
       // 发布成功，关闭下拉菜单
       setIsOpen(false);
     } catch (e) {

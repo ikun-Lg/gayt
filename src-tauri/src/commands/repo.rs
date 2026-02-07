@@ -191,11 +191,13 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
     let (upstream, is_published) = if let Ok(branch_name) = head.shorthand().ok_or(AppError::InvalidInput("No branch name".to_string())) {
         if let Ok(branch_obj) = repo.find_branch(branch_name, git2::BranchType::Local) {
             if let Ok(upstream_branch) = branch_obj.upstream() {
+                // Get name before consuming the branch
                 let name = upstream_branch.name()?.map(|s| s.to_string());
 
                 // Verify that the remote branch actually exists
                 // by checking if we can resolve it to a commit
-                let remote_exists = upstream_branch.into_reference().peel_to_commit().is_ok();
+                let upstream_ref = upstream_branch.into_reference();
+                let remote_exists = upstream_ref.peel_to_commit().is_ok();
 
                 (name, remote_exists)
             } else {
