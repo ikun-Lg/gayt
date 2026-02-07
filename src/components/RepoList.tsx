@@ -1,9 +1,10 @@
 import { useRepoStore } from '../store/repoStore';
 import { RepoListItem } from './RepoListItem';
 import { Button } from './ui/Button';
-import { RefreshCw, FolderOpen, Settings } from 'lucide-react';
+import { RefreshCw, FolderOpen, Settings, DownloadCloud } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
+import { CloneDialog } from './CloneDialog';
 
 interface RepoListProps {
   onScanClick: () => void;
@@ -13,6 +14,7 @@ interface RepoListProps {
 export function RepoList({ onScanClick, onSettingsClick }: RepoListProps) {
   const { repositories, selectedRepoPath, selectRepo } = useRepoStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -28,6 +30,15 @@ export function RepoList({ onScanClick, onSettingsClick }: RepoListProps) {
       <div className="group flex items-center justify-between px-4 pt-10 pb-3 sticky top-0 z-10 shrink-0 drag-region">
         <h2 className="font-semibold text-xs text-muted-foreground/70 tracking-wide uppercase">项目仓库</h2>
         <div className="flex items-center gap-1 transition-opacity duration-200">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setIsCloneDialogOpen(true)}
+            className="w-6 h-6 hover:bg-muted text-muted-foreground transition-all duration-200"
+            title="克隆仓库"
+          >
+            <DownloadCloud className="w-3.5 h-3.5" />
+          </Button>
           <Button
             size="icon"
             variant="ghost"
@@ -60,13 +71,23 @@ export function RepoList({ onScanClick, onSettingsClick }: RepoListProps) {
               <p className="text-sm font-medium text-foreground">未找到项目仓库</p>
               <p className="text-xs">扫描本地目录以开始管理您的 Git 项目</p>
             </div>
-            <Button 
-              onClick={onScanClick}
-              size="sm"
-              className="mt-2 shadow-sm"
-            >
-              选择目录
-            </Button>
+            <div className="flex gap-2 mt-2">
+                <Button 
+                onClick={onScanClick}
+                size="sm"
+                className="shadow-sm"
+                >
+                选择目录
+                </Button>
+                <Button 
+                onClick={() => setIsCloneDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                className="shadow-sm"
+                >
+                克隆仓库
+                </Button>
+            </div>
           </div>
         ) : (
           <div className="p-3 space-y-1">
@@ -96,6 +117,11 @@ export function RepoList({ onScanClick, onSettingsClick }: RepoListProps) {
           </Button>
         </div>
       )}
+
+      <CloneDialog 
+        isOpen={isCloneDialogOpen} 
+        onClose={() => setIsCloneDialogOpen(false)} 
+      />
     </div>
   );
 }

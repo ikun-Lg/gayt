@@ -60,6 +60,7 @@ interface RepoStore {
   mergeBranch: (path: string, branchName: string) => Promise<void>;
   fetch: (path: string, remote?: string, username?: string, password?: string) => Promise<void>;
   pull: (path: string, remote?: string, branch?: string, useRebase?: boolean, username?: string, password?: string) => Promise<void>;
+  cloneRepository: (url: string, destination: string, username?: string, password?: string) => Promise<void>;
   
   stashSave: (path: string, message?: string, includeUntracked?: boolean) => Promise<void>;
   stashApply: (path: string, index: number) => Promise<void>;
@@ -439,6 +440,32 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     } catch (e) {
       console.error('Failed to get file diff:', e);
       set({ selectedFile: filePath, selectedFileDiff: 'Error loading diff' });
+    }
+  },
+
+  cloneRepository: async (url, destination, username, password) => {
+    // Listen for progress events
+    const processUnlisten = await import('@tauri-apps/api/event').then(entry => {
+        return entry.listen('clone-progress', (event: any) => {
+             // We can store this in a separate store or just log it for now
+             console.log('Clone progress:', event.payload);
+        });
+    });
+
+    try {
+      const path = await invoke<string>('clone_repository', { 
+        url, 
+        destination, 
+        username, 
+        password 
+      });
+      
+       const parentDir = destination.substring(0, destination.lastIndexOf('/'));
+       await get().scanRepositories(parentDir);
+       
+       get().selectRepo(path);
+    } finally {
+      processUnlisten();
     }
   },
 }));

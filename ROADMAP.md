@@ -39,10 +39,10 @@
   - [X] stash 包含未跟踪文件选项
   - [X] UI: Stash 列表面板，快速应用/丢弃
 
-- [ ] **Pull 操作**
-  - [ ] fetch 远程更新
-  - [ ] pull 当前分支（支持 rebase/merge 策略）
-  - [ ] 拉取冲突检测与提示
+- [X] **Pull 操作**
+  - [X] fetch 远程更新
+  - [X] pull 当前分支（支持 rebase/merge 策略）
+  - [X] 拉取冲突检测与提示
 
 - [ ] **Clone 仓库**
   - [ ] 从 URL 克隆仓库

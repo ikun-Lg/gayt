@@ -44,6 +44,8 @@ pub fn run() {
             stash_apply,
             stash_pop,
             stash_drop,
+            // Clone command
+            clone_repository,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
