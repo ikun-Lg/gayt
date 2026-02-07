@@ -33,6 +33,23 @@ export type FileStatus =
   | "unmerged"
   | "unknown";
 
+// Conflict types
+export interface ConflictInfo {
+  path: string;
+  current: string | null;
+  incoming: string | null;
+  ancestor: string | null;
+  conflictMarkers: boolean;
+}
+
+export interface MergeState {
+  isMergeInProgress: boolean;
+  conflictCount: number;
+  conflictedFiles: ConflictInfo[];
+}
+
+export type ConflictResolution = "current" | "incoming" | "ancestor" | "manual";
+
 export interface BranchInfo {
   current: string;
   ahead: number;

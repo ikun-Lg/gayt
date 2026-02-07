@@ -137,3 +137,23 @@ impl CommitSuggestion {
         self
     }
 }
+
+/// Conflict information for a file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictInfo {
+    pub path: String,
+    pub current: Option<String>,
+    pub incoming: Option<String>,
+    pub ancestor: Option<String>,
+    pub conflict_markers: bool,
+}
+
+/// Merge state information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeState {
+    pub is_merge_in_progress: bool,
+    pub conflict_count: usize,
+    pub conflicted_files: Vec<ConflictInfo>,
+}

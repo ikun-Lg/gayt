@@ -28,6 +28,11 @@ pub fn run() {
             merge_branch,
             fetch_remote,
             pull_branch,
+            get_merge_state,
+            resolve_conflict,
+            get_conflict_diff,
+            abort_merge,
+            complete_merge,
             // Commit commands
             stage_files,
             unstage_files,

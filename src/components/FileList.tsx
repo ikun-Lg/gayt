@@ -1,6 +1,6 @@
 import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
-import { Plus, Minus, File, FilePlus, FileMinus, FileEdit, GitBranch } from 'lucide-react';
+import { Plus, Minus, File, FilePlus, FileMinus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
 import type { FileStatus, StatusItem } from '../types';
 
 interface FileListProps {
@@ -99,13 +99,15 @@ function FileIcon({ status }: { status: FileStatus }) {
       return <FileEdit className="w-4 h-4 text-amber-500 drop-shadow-[0_0_3px_rgba(245,158,11,0.3)]" />;
     case 'renamed':
       return <File className="w-4 h-4 text-blue-500 drop-shadow-[0_0_3px_rgba(59,130,246,0.3)]" />;
+    case 'unmerged':
+      return <AlertTriangle className="w-4 h-4 text-destructive drop-shadow-[0_0_3px_rgba(239,68,68,0.3)]" />;
     default:
       return <File {...iconProps} />;
   }
 }
 
 export function FileList({ repoPath }: FileListProps) {
-  const { currentStatus, stageFile, unstageFile, stageAll, unstageAll, selectedFile, selectFile } = useRepoStore();
+  const { currentStatus, stageFile, unstageFile, stageAll, unstageAll, selectedFile, selectFile, mergeState } = useRepoStore();
 
   if (!currentStatus) {
     return (
@@ -190,17 +192,43 @@ export function FileList({ repoPath }: FileListProps) {
         />
 
         {currentStatus.conflicted.length > 0 && (
-          <FileSection
-            title="代码冲突"
-            files={currentStatus.conflicted}
-            onStageFile={() => {}}
-            onUnstageFile={() => {}}
-            stageLabel=""
-            unstageLabel=""
-            icon={<span className="text-[10px] font-black text-destructive">C</span>}
-            selectedFile={selectedFile}
-            onSelectFile={(file) => selectFile(repoPath, file)}
-          />
+          <div className="mb-6 last:mb-0">
+            <div className="flex items-center gap-2 mb-2 px-2">
+              <div className="flex items-center justify-center w-5 h-5 rounded bg-destructive/10 animate-pulse">
+                <AlertTriangle className="w-3 h-3 text-destructive" />
+              </div>
+              <h3 className="text-[11px] font-semibold tracking-wide uppercase text-destructive">合并冲突</h3>
+              <span className="text-[10px] text-destructive/60 font-mono">
+                {currentStatus.conflicted.length}
+              </span>
+              {mergeState?.isMergeInProgress && (
+                <span className="ml-auto text-[9px] text-destructive/80 bg-destructive/10 px-2 py-0.5 rounded-full">
+                  需要解决后才能提交
+                </span>
+              )}
+            </div>
+            <div className="space-y-[1px] rounded-lg overflow-hidden border-2 border-destructive/30 bg-destructive/5 backdrop-blur-sm">
+              {currentStatus.conflicted.map((item, index) => (
+                <div
+                  key={`${item.path}-${index}`}
+                  onClick={() => selectFile(repoPath, item.path)}
+                  className={`group flex items-center gap-3 px-3 py-2.5 hover:bg-destructive/10 active:bg-destructive/20 transition-colors duration-100 cursor-pointer ${
+                    selectedFile === item.path ? 'bg-destructive/15' : ''
+                  }`}
+                >
+                  <div className="opacity-90 group-hover:opacity-100 transition-opacity">
+                    <AlertTriangle className="w-4 h-4 text-destructive drop-shadow-[0_0_3px_rgba(239,68,68,0.3)]" />
+                  </div>
+                  <span className="flex-1 text-[13px] font-medium truncate text-destructive/90">{item.path}</span>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                    <span className="text-[9px] text-destructive/70 bg-destructive/10 px-1.5 py-0.5 rounded">
+                      未解决
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -7,7 +7,8 @@ import { BranchSelector } from './BranchSelector';
 import { DiffView } from './DiffView';
 import { StashPanel } from './StashPanel';
 import { TagList } from './TagList';
-import { AlertCircle, Upload, RotateCcw, GitCommit, Download, GitGraph, Clock, FileDiff, Archive, Tag, Globe } from 'lucide-react';
+import { ConflictPanel } from './ConflictPanel';
+import { AlertCircle, Upload, RotateCcw, GitCommit, Download, GitGraph, Clock, FileDiff, Archive, Tag, Globe, AlertTriangle } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
@@ -22,23 +23,25 @@ interface RepoViewProps {
   repoPath: string;
 }
 
-type ViewMode = 'changes' | 'history' | 'stashes' | 'tags';
+type ViewMode = 'changes' | 'history' | 'stashes' | 'tags' | 'conflicts';
 
 export function RepoView({ repoPath }: RepoViewProps) {
-  const { 
-    repositories, 
+  const {
+    repositories,
     pushBranch,
     fetch,
-    pull, 
-    refreshBranchInfo, 
-    currentBranchInfo, 
-    revokeLatestCommit, 
+    pull,
+    refreshBranchInfo,
+    currentBranchInfo,
+    revokeLatestCommit,
     currentStatus,
     commitHistory,
     loadCommitHistory,
     selectedFile,
     selectedFileDiff,
-    selectFile
+    selectFile,
+    mergeState,
+    getMergeState
   } = useRepoStore();
   const { gitUsername: savedUsername, gitPassword } = useSettingsStore();
 
@@ -53,6 +56,18 @@ export function RepoView({ repoPath }: RepoViewProps) {
   const [gitUsername, setGitUsername] = useState<string>(savedUsername || '');
   const [showGraph, setShowGraph] = useState(true); // Default to showing graph in history mode
   const [isRemoteDialogOpen, setIsRemoteDialogOpen] = useState(false);
+
+  // Auto-check for conflicts after pull/merge operations
+  useEffect(() => {
+    getMergeState(repoPath);
+  }, [repoPath]);
+
+  // Auto-switch to conflicts view when merge is detected
+  useEffect(() => {
+    if (mergeState?.isMergeInProgress && viewMode !== 'conflicts') {
+      setViewMode('conflicts');
+    }
+  }, [mergeState?.isMergeInProgress]);
 
   // Load git username from config if not saved
   useEffect(() => {
@@ -327,14 +342,33 @@ export function RepoView({ repoPath }: RepoViewProps) {
                 onClick={() => setViewMode('tags')}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
-                  viewMode === 'tags' 
-                    ? "bg-background shadow-sm text-foreground" 
+                  viewMode === 'tags'
+                    ? "bg-background shadow-sm text-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-background/50"
                 )}
               >
                 <Tag className="w-3.5 h-3.5" />
                 标签
               </button>
+              {mergeState?.isMergeInProgress && (
+                <button
+                  onClick={() => setViewMode('conflicts')}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                    viewMode === 'conflicts'
+                      ? "bg-destructive/10 shadow-sm text-destructive border border-destructive/30"
+                      : "text-destructive/70 hover:text-destructive hover:bg-destructive/5"
+                  )}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  冲突
+                  {mergeState.conflictCount > 0 && (
+                    <span className="flex items-center justify-center w-4 h-4 text-[9px] bg-destructive text-white rounded-full">
+                      {mergeState.conflictCount}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
 
            <div className="flex items-center gap-3">
@@ -522,6 +556,15 @@ export function RepoView({ repoPath }: RepoViewProps) {
         {viewMode === 'tags' && (
            <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
              <TagList />
+           </div>
+        )}
+
+        {/* Conflicts View */}
+        {viewMode === 'conflicts' && (
+           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+             <ConflictPanel repoPath={repoPath} onResolve={() => {
+               setViewMode('changes');
+             }} />
            </div>
         )}
 

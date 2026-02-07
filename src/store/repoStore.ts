@@ -12,6 +12,8 @@ import type {
   StashInfo,
   TagInfo,
   RemoteInfo,
+  MergeState,
+  ConflictResolution,
 } from '../types';
 
 interface RepoStore {
@@ -28,6 +30,7 @@ interface RepoStore {
   stashes: StashInfo[];
   tags: TagInfo[];
   remotes: RemoteInfo[];
+  mergeState: MergeState | null;
 
   // Actions
   setRepositories: (repos: Repository[]) => void;
@@ -83,9 +86,16 @@ interface RepoStore {
   renameRemote: (path: string, oldName: string, newName: string) => Promise<void>;
   setRemoteUrl: (path: string, name: string, url: string) => Promise<void>;
 
+  // Conflict operations
+  getMergeState: (path: string) => Promise<void>;
+  resolveConflict: (path: string, filePath: string, version: ConflictResolution) => Promise<void>;
+  getConflictDiff: (path: string, filePath: string) => Promise<string>;
+  abortMerge: (path: string) => Promise<void>;
+  completeMerge: (path: string, message?: string) => Promise<void>;
+
   generateCommitMessage: (repoPath: string, diffContent?: string) => Promise<CommitSuggestion>;
   reviewCode: (repoPath: string, diffContent?: string) => Promise<ReviewResult>;
-  
+
   selectedFile: string | null;
   selectedFileDiff: string | null;
   selectFile: (repoPath: string, filePath: string | null) => Promise<void>;
@@ -107,20 +117,22 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   remotes: [],
   selectedFile: null,
   selectedFileDiff: null,
+  mergeState: null,
   
   // Actions
   setRepositories: (repos) => set({ repositories: repos }),
 
   selectRepo: (path) => {
-    set({ 
-      selectedRepoPath: path, 
-      currentStatus: null, 
-      currentBranchInfo: null, 
+    set({
+      selectedRepoPath: path,
+      currentStatus: null,
+      currentBranchInfo: null,
       localBranches: [],
       selectedFile: null,
       selectedFileDiff: null,
       tags: [],
       remotes: [],
+      mergeState: null,
     });
     if (path) {
       get().refreshStatus(path);
@@ -129,6 +141,7 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
       get().loadStashes(path);
       get().loadTags(path);
       get().loadRemotes(path);
+      get().getMergeState(path);
     }
   },
 
@@ -545,5 +558,42 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   setRemoteUrl: async (path, name, url) => {
     await invoke('set_remote_url', { path, name, url });
     await get().loadRemotes(path);
+  },
+
+  // Conflict operations
+  getMergeState: async (path) => {
+    try {
+      const mergeState = await invoke<MergeState>('get_merge_state', { path });
+      set({ mergeState });
+    } catch (e) {
+      console.error('Failed to get merge state:', e);
+      set({ mergeState: null });
+    }
+  },
+
+  resolveConflict: async (path, filePath, version) => {
+    await invoke('resolve_conflict', { path, filePath, version });
+    // Refresh merge state to update conflict count
+    await get().getMergeState(path);
+    await get().refreshStatus(path);
+  },
+
+  getConflictDiff: async (path, filePath) => {
+    return await invoke<string>('get_conflict_diff', { path, filePath });
+  },
+
+  abortMerge: async (path) => {
+    await invoke('abort_merge', { path });
+    await get().getMergeState(path);
+    await get().refreshStatus(path);
+    await get().refreshBranchInfo(path);
+  },
+
+  completeMerge: async (path, message) => {
+    await invoke('complete_merge', { path, message });
+    await get().getMergeState(path);
+    await get().refreshStatus(path);
+    await get().refreshBranchInfo(path);
+    await get().loadCommitHistory(path);
   },
 }));

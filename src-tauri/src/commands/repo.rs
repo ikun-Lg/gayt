@@ -1,4 +1,4 @@
-use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo, LocalBranch, TagInfo, RemoteInfo};
+use crate::domain::{RepositoryInfo, RepoStatus, StatusItem, BranchInfo, CommitInfo, LocalBranch, TagInfo, RemoteInfo, ConflictInfo, MergeState};
 use crate::error::{AppError, Result};
 use git2::{Repository, StatusOptions};
 use ignore::WalkBuilder;
@@ -1233,4 +1233,319 @@ pub async fn set_remote_url(path: String, name: String, url: String) -> std::res
     let repo = Repository::open(&path).map_err(|e| e.to_string())?;
     repo.remote_set_url(&name, &url).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Get merge state and conflict information
+#[tauri::command]
+pub async fn get_merge_state(path: String) -> std::result::Result<MergeState, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    get_merge_state_impl(&repo).map_err(|e| e.to_string())
+}
+
+fn get_merge_state_impl(repo: &Repository) -> Result<MergeState> {
+    let index = repo.index()?;
+    let is_merge_in_progress = index.has_conflicts();
+
+    let mut conflicted_files = Vec::new();
+    let mut seen_paths = std::collections::HashSet::new();
+
+    if is_merge_in_progress {
+        // Iterate through index entries to find conflicted files
+        for entry in index.iter() {
+            let path_bytes = &entry.path;
+            let path = String::from_utf8_lossy(path_bytes).to_string();
+
+            if path.is_empty() {
+                continue;
+            }
+
+            // Skip if we've already processed this file
+            if seen_paths.contains(&path) {
+                continue;
+            }
+
+            // Check if this file has conflicts
+            let has_conflict = index
+                .iter()
+                .any(|e| String::from_utf8_lossy(&e.path).to_string() == path);
+
+            if has_conflict {
+                seen_paths.insert(path.clone());
+
+                // Read conflict content from the file
+                let workdir = repo.workdir().ok_or(AppError::InvalidInput("No workdir".to_string()))?;
+                let file_path = workdir.join(&path);
+
+                let (current, incoming, ancestor, conflict_markers) = if file_path.exists() {
+                    let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+                    parse_conflict_content(&content)
+                } else {
+                    (None, None, None, false)
+                };
+
+                conflicted_files.push(ConflictInfo {
+                    path,
+                    current,
+                    incoming,
+                    ancestor,
+                    conflict_markers,
+                });
+            }
+        }
+    }
+
+    Ok(MergeState {
+        is_merge_in_progress,
+        conflict_count: conflicted_files.len(),
+        conflicted_files,
+    })
+}
+
+/// Parse conflict markers from file content
+fn parse_conflict_content(content: &str) -> (Option<String>, Option<String>, Option<String>, bool) {
+    let mut current = None;
+    let mut incoming = None;
+    let mut ancestor = None;
+    let has_markers = content.contains("<<<<<<<") || content.contains(">>>>>>>");
+
+    // Simple conflict marker parsing
+    let lines: Vec<&str> = content.lines().collect();
+    let mut state = ConflictParseState::None;
+    let mut current_buf = String::new();
+    let mut incoming_buf = String::new();
+    let ancestor_buf = String::new();
+
+    for line in lines {
+        if line.contains("<<<<<<<") {
+            state = ConflictParseState::Current;
+        } else if line.contains("=======") && !line.contains(">>>>>>>") {
+            state = ConflictParseState::Incoming;
+        } else if line.contains(">>>>>>>") {
+            state = ConflictParseState::None;
+        } else {
+            match state {
+                ConflictParseState::Current => {
+                    current_buf.push_str(line);
+                    current_buf.push('\n');
+                }
+                ConflictParseState::Incoming => {
+                    incoming_buf.push_str(line);
+                    incoming_buf.push('\n');
+                }
+                ConflictParseState::None => {}
+            }
+        }
+    }
+
+    if !current_buf.is_empty() {
+        current = Some(current_buf.trim().to_string());
+    }
+    if !incoming_buf.is_empty() {
+        incoming = Some(incoming_buf.trim().to_string());
+    }
+    if !ancestor_buf.is_empty() {
+        ancestor = Some(ancestor_buf.trim().to_string());
+    }
+
+    (current, incoming, ancestor, has_markers)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConflictParseState {
+    None,
+    Current,
+    Incoming,
+}
+
+/// Resolve a conflict file by accepting a specific version
+#[tauri::command]
+pub async fn resolve_conflict(
+    path: String,
+    file_path: String,
+    version: String,
+) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    resolve_conflict_impl(&repo, &file_path, &version).map_err(|e| e.to_string())
+}
+
+fn resolve_conflict_impl(repo: &Repository, file_path: &str, version: &str) -> Result<()> {
+    let workdir = repo.workdir().ok_or(AppError::InvalidInput("No workdir".to_string()))?;
+
+    // Use git checkout to accept different versions
+    let checkout_arg = match version {
+        "current" | "ours" => "--ours",
+        "incoming" | "theirs" => "--theirs",
+        "ancestor" | "base" => {
+            // For ancestor, we need a different approach since git doesn't directly support --base
+            return Err(AppError::InvalidInput(
+                "Ancestor resolution not directly supported. Please use 'current' or 'incoming'.".to_string()
+            ));
+        }
+        "manual" => {
+            // User manually resolved, just add the file
+            let mut index = repo.index()?;
+            index.add_all(
+                [file_path].iter(),
+                git2::IndexAddOption::DEFAULT,
+                None,
+            )?;
+            index.write()?;
+            return Ok(());
+        }
+        _ => {
+            return Err(AppError::InvalidInput(format!("Unknown version: {}", version)));
+        }
+    };
+
+    // Use git command line tool for checkout
+    let output = std::process::Command::new("git")
+        .arg("checkout")
+        .arg(checkout_arg)
+        .arg("--")
+        .arg(file_path)
+        .current_dir(workdir)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(AppError::Git(git2::Error::from_str(&String::from_utf8_lossy(&output.stderr))));
+    }
+
+    // Stage the resolved file
+    let mut index = repo.index()?;
+    index.add_all(
+        [file_path].iter(),
+        git2::IndexAddOption::DEFAULT,
+        None,
+    )?;
+    index.write()?;
+
+    Ok(())
+}
+
+/// Get conflict diff for a specific file
+#[tauri::command]
+pub async fn get_conflict_diff(
+    path: String,
+    file_path: String,
+) -> std::result::Result<String, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    get_conflict_diff_impl(&repo, &file_path).map_err(|e| e.to_string())
+}
+
+fn get_conflict_diff_impl(repo: &Repository, file_path: &str) -> Result<String> {
+    let workdir = repo.workdir().ok_or(AppError::InvalidInput("No workdir".to_string()))?;
+    let full_path = workdir.join(file_path);
+
+    if !full_path.exists() {
+        return Ok("File does not exist in working directory".to_string());
+    }
+
+    let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+
+    // Check if file has conflict markers
+    if !content.contains("<<<<<<<") {
+        return Ok("No conflict markers found in file".to_string());
+    }
+
+    // Return the raw content for display
+    Ok(content)
+}
+
+/// Abort the current merge
+#[tauri::command]
+pub async fn abort_merge(path: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    abort_merge_impl(&repo).map_err(|e| e.to_string())
+}
+
+fn abort_merge_impl(repo: &Repository) -> Result<()> {
+    // Check if merge is in progress
+    let index = repo.index()?;
+    if !index.has_conflicts() {
+        return Err(AppError::InvalidInput("No merge in progress".to_string()));
+    }
+
+    // Cleanup merge state
+    repo.cleanup_state()?;
+
+    // Reset to HEAD
+    let head = repo.head()?;
+    let commit = head.peel_to_commit()?;
+    let tree = commit.tree()?;
+
+    repo.checkout_tree(tree.as_object(), None)?;
+    repo.set_head(head.name().ok_or(AppError::InvalidInput("No HEAD name".to_string()))?)?;
+
+    Ok(())
+}
+
+/// Complete the merge after resolving conflicts
+#[tauri::command]
+pub async fn complete_merge(path: String, message: Option<String>) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    complete_merge_impl(&repo, message).map_err(|e| e.to_string())
+}
+
+fn complete_merge_impl(repo: &Repository, message: Option<String>) -> Result<()> {
+    let mut index = repo.index()?;
+
+    if index.has_conflicts() {
+        return Err(AppError::InvalidInput("Cannot complete merge with unresolved conflicts".to_string()));
+    }
+
+    // Write the tree
+    let tree_id = index.write_tree_to(repo)?;
+    let tree = repo.find_tree(tree_id)?;
+
+    // Get the merge message
+    let merge_msg = if let Some(msg) = message {
+        msg
+    } else {
+        // Try to get from .git/MERGE_MSG
+        let git_dir = repo.path();
+        let merge_msg_path = git_dir.join("MERGE_MSG");
+        if merge_msg_path.exists() {
+            std::fs::read_to_string(&merge_msg_path).unwrap_or_else(|_| "Merge commit".to_string())
+        } else {
+            "Merge commit".to_string()
+        }
+    };
+
+    let signature = repo.signature()?;
+
+    // Get HEAD commit
+    let head_commit = repo.head()?.peel_to_commit()?;
+
+    // Get MERGE_HEAD to find the other parent
+    let git_dir = repo.path();
+    let merge_head_path = git_dir.join("MERGE_HEAD");
+    if !merge_head_path.exists() {
+        return Err(AppError::InvalidInput("No merge in progress".to_string()));
+    }
+
+    let merge_head_content = std::fs::read_to_string(&merge_head_path)?;
+    let merge_oid = git2::Oid::from_str(trim(&merge_head_content))?;
+    let merge_commit = repo.find_commit(merge_oid)?;
+
+    // Create the merge commit
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &merge_msg,
+        &tree,
+        &[&head_commit, &merge_commit],
+    )?;
+
+    // Cleanup merge state
+    repo.cleanup_state()?;
+
+    // Checkout the new state
+    repo.checkout_index(None, None)?;
+
+    Ok(())
+}
+
+fn trim(s: &str) -> &str {
+    s.trim().trim_end_matches('\n')
 }
