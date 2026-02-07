@@ -16,6 +16,9 @@ interface SettingsStore extends Settings {
   setCommitLanguage: (lang: 'zh' | 'en') => void;
   setCommitFormat: (format: 'conventional' | 'custom') => void;
   setCustomPrompt: (prompt: string | null) => void;
+  // Sidebar
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -31,6 +34,7 @@ export const useSettingsStore = create<SettingsStore>()(
       customPrompt: null,
       gitUsername: null,
       gitPassword: null,
+      sidebarWidth: 320, // Default width
 
       // Actions
       setWorkDir: (dir) => set({ workDir: dir }),
@@ -42,6 +46,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setCustomPrompt: (prompt) => set({ customPrompt: prompt }),
       setGitUsername: (username) => set({ gitUsername: username }),
       setGitPassword: (password) => set({ gitPassword: password }),
+      setSidebarWidth: (width) => set({ sidebarWidth: width }),
     }),
     {
       name: 'gayt-settings',

@@ -57,7 +57,7 @@ export function RepoList({ onScanClick }: RepoListProps) {
             <p className="text-xs mt-1">点击文件夹图标扫描目录</p>
           </div>
         ) : (
-          <div className="p-3 space-y-2">
+          <div className="p-3 space-y-1">
             {repositories.map((repo) => (
               <RepoListItem
                 key={repo.path}

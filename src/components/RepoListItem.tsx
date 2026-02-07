@@ -24,7 +24,7 @@ export function RepoListItem({
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-all duration-300',
+        'group flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all duration-300',
         'hover:bg-accent/40 hover:shadow-md hover:-translate-y-0.5 active:scale-95 btn-tactile animate-enter',
         isSelected ? 'bg-primary/5 shadow-inner ring-1 ring-primary/20' : 'bg-transparent'
       )}
@@ -35,18 +35,18 @@ export function RepoListItem({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2">
           <span className={cn(
-            "font-semibold truncate text-[15px] tracking-tight",
+            "font-semibold truncate text-[14px] tracking-tight leading-tight",
             isSelected ? "text-primary" : "text-foreground"
           )}>{repo.name}</span>
           {repo.hasChanges && (
-            <Badge variant="destructive" className="px-1.5 py-0 h-4 min-w-4 flex items-center justify-center font-bold text-[10px] rounded-full">
+            <Badge variant="destructive" className="px-1.5 py-0 h-4 min-w-4 flex items-center justify-center font-bold text-[9px] rounded-full">
               {repo.stagedCount + repo.unstagedCount + repo.untrackedCount}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[12px] font-medium text-muted-foreground/80">
+        <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground/80 mt-0.5">
           {repo.branch && (
             <span className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded-md">
               <GitBranch className="w-3 h-3 text-primary/70" />

@@ -10,19 +10,51 @@ import { ScanDialog } from './components/ScanDialog';
 import { Settings } from './components/Settings';
 import { Button } from './components/ui/Button';
 import { Settings as SettingsIcon, Github } from 'lucide-react';
+import { cn } from './lib/utils';
 import './App.css';
 
 function App() {
   const { repositories, selectedRepoPath, scanRepositories, isLoading } = useRepoStore();
-  const { workDir, setWorkDir } = useSettingsStore();
+  const { workDir, setWorkDir, sidebarWidth, setSidebarWidth } = useSettingsStore();
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     if (workDir) {
       scanRepositories(workDir);
     }
   }, [workDir, scanRepositories]);
+
+  // Sidebar resize logic
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = e.clientX;
+      if (newWidth > 150 && newWidth < 600) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, setSidebarWidth]);
 
   // 自动刷新逻辑
   useEffect(() => {
@@ -94,14 +126,23 @@ function App() {
       </header>
 
       {/* 主内容 */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className={cn("flex-1 flex overflow-hidden", isResizing && "resizing")}>
         {/* 侧边栏 */}
-        <aside className="w-80 sidebar-glass flex flex-col shadow-inner">
+        <aside 
+          className="sidebar-glass flex flex-col shadow-inner shrink-0"
+          style={{ width: `${sidebarWidth}px` }}
+        >
           <RepoList onScanClick={() => setShowScanDialog(true)} />
         </aside>
 
+        {/* 调整大小控制柄 */}
+        <div 
+          className="resize-handle"
+          onMouseDown={handleMouseDown}
+        />
+
         {/* 主视图 */}
-        <main className="flex-1 bg-background/50 relative">
+        <main className="flex-1 bg-background/50 relative overflow-hidden">
           {selectedRepoPath ? (
             <RepoView repoPath={selectedRepoPath} />
           ) : repositories.length > 0 ? (

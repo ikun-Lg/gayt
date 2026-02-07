@@ -93,6 +93,14 @@
     animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
 
+  .resize-handle {
+    @apply w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors duration-200 z-50 -ml-[3px];
+  }
+
+  .resizing {
+    @apply cursor-col-resize select-none pointer-events-none;
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
