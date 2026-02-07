@@ -160,6 +160,25 @@ export function RepoView({ repoPath }: RepoViewProps) {
     setIsPushing(true);
     setPushError(null);
     try {
+      // First check if there are staged changes to commit
+      const hasStagedChanges = currentStatus && currentStatus.staged.length > 0;
+
+      if (hasStagedChanges) {
+        // Generate a simple commit message if there are staged changes
+        const commitMessage = `Update ${currentBranch}`;
+
+        // Use the commit command from store
+        const { commit } = useRepoStore.getState();
+        await commit(repoPath, commitMessage);
+
+        // Clear the commit panel message if exists
+        const commitInput = document.getElementById('commit-message-input') as HTMLTextAreaElement;
+        if (commitInput) {
+          commitInput.value = '';
+        }
+      }
+
+      // Then push
       await pushBranch(
         repoPath,
         currentBranch,
