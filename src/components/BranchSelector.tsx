@@ -7,6 +7,8 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
 
+import { CreateBranchDialog } from './CreateBranchDialog';
+
 interface BranchSelectorProps {
   repoPath: string;
 }
@@ -33,6 +35,10 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, branch: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [baseBranchForCreate, setBaseBranchForCreate] = useState<string | null>(null);
 
   // Load git username from config if not saved
   useEffect(() => {
@@ -158,18 +164,17 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     }
   };
 
-  const handleCreateBranch = async (baseBranchName: string) => {
-    try {
-      const newName = window.prompt(`基于 "${baseBranchName}" 创建新分支:`);
-      if (newName) {
-        await createBranch(repoPath, newName, baseBranchName);
-        setContextMenu(null);
-        // Optional: switch to new branch automatically?
-        // await switchBranch(repoPath, newName);
-      }
-    } catch (e) {
-      console.error('创建分支失败:', e);
-      setErrorMessage(String(e));
+  const handleCreateBranchClick = (branchName: string) => {
+    setBaseBranchForCreate(branchName);
+    setCreateDialogOpen(true);
+    setContextMenu(null);
+  };
+
+  const handleCreateBranchConfirm = async (newBranchName: string) => {
+    if (baseBranchForCreate) {
+      await createBranch(repoPath, newBranchName, baseBranchForCreate);
+      // Optional: switch to new branch automatically?
+      // await switchBranch(repoPath, newBranchName);
     }
   };
 
@@ -264,7 +269,7 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
                 
                 <button 
                   className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary hover:text-white flex items-center gap-2"
-                  onClick={() => handleCreateBranch(contextMenu.branch)}
+                  onClick={() => handleCreateBranchClick(contextMenu.branch)}
                 >
                   <GitBranch className="w-4 h-4" /> 基于此分支新建
                 </button>
@@ -292,6 +297,18 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
                   <Trash2 className="w-4 h-4" /> 删除分支
                 </button>
               </div>
+            )}
+
+            {baseBranchForCreate && (
+              <CreateBranchDialog
+                isOpen={createDialogOpen}
+                baseBranch={baseBranchForCreate}
+                onClose={() => {
+                  setCreateDialogOpen(false);
+                  setBaseBranchForCreate(null);
+                }}
+                onCreate={handleCreateBranchConfirm}
+              />
             )}
 
             {/* 操作按钮区域 */}
