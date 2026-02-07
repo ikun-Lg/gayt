@@ -342,6 +342,21 @@ pub async fn rename_branch(path: String, old_name: String, new_name: String) -> 
     Ok(())
 }
 
+/// Create a new branch from a base branch
+#[tauri::command]
+pub async fn create_branch(path: String, new_branch_name: String, base_branch_name: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    
+    // Find the commit of the base branch
+    let base_branch = repo.find_branch(&base_branch_name, git2::BranchType::Local).map_err(|e| e.to_string())?;
+    let commit = base_branch.get().peel_to_commit().map_err(|e| e.to_string())?;
+    
+    // Create the new branch
+    repo.branch(&new_branch_name, &commit, false).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 /// Publish current branch (set upstream)
 #[tauri::command]
 pub async fn publish_branch(

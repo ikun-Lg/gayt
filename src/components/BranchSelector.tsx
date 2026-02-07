@@ -2,7 +2,7 @@ import { useRepoStore } from '../store/repoStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import { GitBranch, Cloud, Check, Upload, Trash2, Edit3, Copy, MousePointer2 } from 'lucide-react';
+import { GitBranch, Cloud, Check, Upload, Trash2, Edit3, Copy } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
@@ -20,6 +20,7 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     pushBranch, 
     deleteBranch,
     renameBranch,
+    createBranch,
     loadLocalBranches, 
     refreshBranchInfo 
   } = useRepoStore();
@@ -157,6 +158,21 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     }
   };
 
+  const handleCreateBranch = async (baseBranchName: string) => {
+    try {
+      const newName = window.prompt(`基于 "${baseBranchName}" 创建新分支:`);
+      if (newName) {
+        await createBranch(repoPath, newName, baseBranchName);
+        setContextMenu(null);
+        // Optional: switch to new branch automatically?
+        // await switchBranch(repoPath, newName);
+      }
+    } catch (e) {
+      console.error('创建分支失败:', e);
+      setErrorMessage(String(e));
+    }
+  };
+
   const handleCopyBranchName = (branchName: string) => {
     navigator.clipboard.writeText(branchName);
     setContextMenu(null);
@@ -248,9 +264,9 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
                 
                 <button 
                   className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary hover:text-white flex items-center gap-2"
-                  onClick={() => handleSwitchBranch(contextMenu.branch)}
+                  onClick={() => handleCreateBranch(contextMenu.branch)}
                 >
-                  <MousePointer2 className="w-4 h-4" /> 切换至此分支
+                  <GitBranch className="w-4 h-4" /> 基于此分支新建
                 </button>
                 
                 <button 
