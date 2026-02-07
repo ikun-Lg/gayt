@@ -861,6 +861,16 @@ fn fetch_remote_impl(
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callbacks);
 
+    // Configure fetch options to handle tag conflicts properly
+    // PRUNE: Remove remote-tracking references that no longer exist on the remote
+    // UPDATE_FETCHHEAD: Update FETCH_HEAD to the latest fetched commit
+    fetch_options.prune(git2::FetchPrune::On);
+    fetch_options.update_fetchhead(true);
+
+    // Tags: Fetch all tags and handle conflicts by force updating
+    // This is similar to git's --tags --force behavior
+    fetch_options.download_tags(git2::AutotagOption::All);
+
     // Perform the fetch
     // Default refspec is usually configured for the remote, so we can pass empty refspec list to use default
     remote_obj.fetch(&[] as &[&str], Some(&mut fetch_options), None)?;
