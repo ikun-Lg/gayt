@@ -87,17 +87,22 @@ fn get_repository_info(path: &Path) -> Result<RepositoryInfo> {
 
 /// Get ahead/behind counts for the current branch
 fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize)> {
+    let mut ahead = 0;
+    let mut behind = 0;
+
     let head = repo.head().ok();
+    let head_oid = head.as_ref().and_then(|h| h.target());
     let head_commit = head.as_ref().and_then(|h| h.peel_to_commit().ok());
     let branch_name = head.as_ref().and_then(|h| h.shorthand().map(|s| s.to_string()));
 
-    let (ahead, behind) = (0, 0);
-
-    if let (Some(head_oid), Some(_), Some(branch_name)) = (head.and_then(|h| h.target()), head_commit, branch_name) {
+    if let (Some(head_oid), Some(_), Some(branch_name)) = (head_oid, head_commit, branch_name) {
         if let Ok(branch_obj) = repo.find_branch(&branch_name, git2::BranchType::Local) {
             if let Ok(upstream) = branch_obj.upstream() {
                 if let Ok(upstream_commit) = upstream.into_reference().peel_to_commit() {
-                    let _ = repo.graph_ahead_behind(head_oid, upstream_commit.id());
+                    if let Ok((a, b)) = repo.graph_ahead_behind(head_oid, upstream_commit.id()) {
+                        ahead = a;
+                        behind = b;
+                    }
                 }
             }
         }
@@ -180,11 +185,19 @@ fn get_branch_info_impl(repo: &Repository) -> Result<BranchInfo> {
     let (ahead, behind) = get_ahead_behind(repo)?;
 
     // Get upstream name and check if published
+    // A branch is considered published if:
+    // 1. It has an upstream configured
+    // 2. The upstream branch exists on the remote
     let (upstream, is_published) = if let Ok(branch_name) = head.shorthand().ok_or(AppError::InvalidInput("No branch name".to_string())) {
         if let Ok(branch_obj) = repo.find_branch(branch_name, git2::BranchType::Local) {
             if let Ok(upstream_branch) = branch_obj.upstream() {
                 let name = upstream_branch.name()?.map(|s| s.to_string());
-                (name, true)
+
+                // Verify that the remote branch actually exists
+                // by checking if we can resolve it to a commit
+                let remote_exists = upstream_branch.into_reference().peel_to_commit().is_ok();
+
+                (name, remote_exists)
             } else {
                 (None, false)
             }
@@ -317,8 +330,35 @@ pub async fn publish_branch(
 }
 
 fn publish_branch_impl(repo: &Repository, branch_name: &str, remote: &str) -> Result<()> {
+    // Find the remote
+    let mut remote_obj = repo.find_remote(remote)
+        .map_err(|_| AppError::InvalidInput(format!("Remote '{}' not found", remote)))?;
+
+    // Prepare the push refspec
+    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+
+    // Set up remote callbacks for authentication
+    let mut callbacks = git2::RemoteCallbacks::new();
+
+    // Handle credentials for SSH/HTTPS
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        // Try SSH agent first for SSH URLs
+        git2::Cred::ssh_key_from_agent(
+            username_from_url.unwrap_or("git")
+        )
+    });
+
+    // Configure push options
+    let mut push_options = git2::PushOptions::new();
+    push_options.remote_callbacks(callbacks);
+
+    // Perform the push
+    remote_obj.push(&[&refspec], Some(&mut push_options))?;
+
+    // After successful push, set upstream
     let mut branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
     branch.set_upstream(Some(&format!("{}/{}", remote, branch_name)))?;
+
     Ok(())
 }
 
