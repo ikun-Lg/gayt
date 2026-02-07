@@ -2,7 +2,7 @@ import { useRepoStore } from '../store/repoStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import { GitBranch, Cloud, Check, Upload, Trash2, Edit3, Copy } from 'lucide-react';
+import { GitBranch, Cloud, Check, Upload, Trash2, Edit3, Copy, GitMerge } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
@@ -23,6 +23,7 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     deleteBranch,
     renameBranch,
     createBranch,
+    mergeBranch,
     loadLocalBranches, 
     refreshBranchInfo 
   } = useRepoStore();
@@ -183,6 +184,27 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
     setContextMenu(null);
   };
 
+  const handleMergeBranch = async (branchName: string) => {
+    try {
+      const { ask } = await import('@tauri-apps/plugin-dialog');
+      const confirmed = await ask(`确定要将 "${branchName}" 合并到当前分支 "${currentBranch}" 吗？`, {
+        title: '合并分支',
+        kind: 'warning',
+        okLabel: '合并',
+        cancelLabel: '取消'
+      });
+      
+      if (!confirmed) return;
+
+      await mergeBranch(repoPath, branchName);
+      setContextMenu(null);
+      setIsOpen(false);
+    } catch (e) {
+      console.error('合并分支失败:', e);
+      setErrorMessage(String(e));
+    }
+  };
+
   // Close context menu on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -273,6 +295,15 @@ export function BranchSelector({ repoPath }: BranchSelectorProps) {
                 >
                   <GitBranch className="w-4 h-4" /> 基于此分支新建
                 </button>
+
+                {!localBranches.find(b => b.name === contextMenu.branch)?.isHead && (
+                  <button 
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary hover:text-white flex items-center gap-2"
+                    onClick={() => handleMergeBranch(contextMenu.branch)}
+                  >
+                    <GitMerge className="w-4 h-4" /> 合并到当前分支
+                  </button>
+                )}
                 
                 <button 
                   className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary hover:text-white flex items-center gap-2"

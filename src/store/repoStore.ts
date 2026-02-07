@@ -54,6 +54,7 @@ interface RepoStore {
   deleteBranch: (path: string, branchName: string) => Promise<void>;
   renameBranch: (path: string, oldName: string, newName: string) => Promise<void>;
   createBranch: (path: string, newBranchName: string, baseBranchName: string) => Promise<void>;
+  mergeBranch: (path: string, branchName: string) => Promise<void>;
 
   generateCommitMessage: (repoPath: string, diffContent?: string) => Promise<CommitSuggestion>;
   reviewCode: (repoPath: string, diffContent?: string) => Promise<ReviewResult>;
@@ -316,6 +317,13 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   createBranch: async (path, newBranchName, baseBranchName) => {
     await invoke('create_branch', { path, newBranchName, baseBranchName });
     await get().loadLocalBranches(path);
+  },
+
+  mergeBranch: async (path, branchName) => {
+    await invoke('merge_branch', { path, branchName });
+    await get().refreshStatus(path);
+    await get().refreshBranchInfo(path);
+    await get().loadCommitHistory(path);
   },
 
   generateCommitMessage: async (repoPath, diffContent) => {

@@ -666,3 +666,72 @@ fn get_file_diff_impl(repo: &Repository, file_path: &str) -> Result<String> {
 
     Ok(diff_content)
 }
+
+/// Merge a branch into the current branch
+#[tauri::command]
+pub async fn merge_branch(path: String, branch_name: String) -> std::result::Result<(), String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    merge_branch_impl(&repo, &branch_name).map_err(|e| e.to_string())
+}
+
+fn merge_branch_impl(repo: &Repository, branch_name: &str) -> Result<()> {
+    let annotated_commit = repo.find_annotated_commit(
+        repo.revparse_single(branch_name)?.id()
+    )?;
+
+    let (analysis, _) = repo.merge_analysis(&[&annotated_commit])?;
+
+    if analysis.is_up_to_date() {
+        return Ok(());
+    } else if analysis.is_fast_forward() {
+        // Fast-forward merge
+        let mut reference = repo.head()?;
+        let name = match reference.name() {
+            Some(n) => n.to_string(),
+            None => return Err(AppError::InvalidInput("HEAD is not a reference".to_string())),
+        };
+        
+        let target_id = annotated_commit.id();
+        reference.set_target(target_id, "Fast-forward merge")?;
+        
+        // Checkout the new head
+        let obj = repo.find_object(target_id, None)?;
+        repo.checkout_tree(&obj, None)?;
+        repo.set_head(&name)?;
+        
+    } else if analysis.is_normal() {
+        // Merge commit
+        let head_commit = repo.head()?.peel_to_commit()?;
+        let merge_commit = repo.find_commit(annotated_commit.id())?;
+        
+        repo.merge(&[&annotated_commit], None, None)?;
+        let mut index = repo.index()?;
+        
+        if index.has_conflicts() {
+            return Err(AppError::MergeConflict);
+        }
+        
+        let tree_id = index.write_tree_to(repo)?;
+        let tree = repo.find_tree(tree_id)?;
+        
+        let signature = repo.signature()?;
+        let message = format!("Merge branch '{}'", branch_name);
+        
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            &message,
+            &tree,
+            &[&head_commit, &merge_commit],
+        )?;
+        
+        // Cleanup merge state
+        repo.cleanup_state()?;
+        
+        // Checkout the new state
+        repo.checkout_index(None, None)?;
+    }
+
+    Ok(())
+}
