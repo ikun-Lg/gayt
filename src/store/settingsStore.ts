@@ -49,7 +49,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
     }),
     {
-      name: 'gayt-settings',
+      name: 'gat-settings',
     }
   )
 );

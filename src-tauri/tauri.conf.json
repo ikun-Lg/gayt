@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gayt",
+  "productName": "gat",
   "version": "0.1.0",
-  "identifier": "com.luoguang.gayt",
+  "identifier": "com.luoguang.gat",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "gayt",
+        "title": "gat",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

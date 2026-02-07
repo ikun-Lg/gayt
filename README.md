@@ -1,6 +1,6 @@
-# gayt
+# gat
 
-gayt 是一个基于 Tauri 构建的现代化 Git 可视化管理工具，支持多仓库管理、AI 辅助提交信息和分支管理。
+gat 是一个基于 Tauri 构建的现代化 Git 可视化管理工具，支持多仓库管理、AI 辅助提交信息和分支管理。
 
 ## 功能特性
 
@@ -26,8 +26,8 @@ gayt 是一个基于 Tauri 构建的现代化 Git 可视化管理工具，支持
 
 ```bash
 # 克隆仓库
-git clone https://github.com/ikun-Lg/gayt.git
-cd gayt
+git clone https://github.com/ikun-Lg/gat.git
+cd gat
 
 # 安装依赖
 pnpm install
@@ -75,7 +75,7 @@ pnpm run tauri build
 
 ## 配置文件
 
-配置文件位于 `~/.config/gayt/git_credentials.json`，存储：
+配置文件位于 `~/.config/gat/git_credentials.json`，存储：
 - Git 凭据（用于发布分支）
 - 用户设置
 
@@ -92,7 +92,7 @@ pnpm run tauri build
 ### 项目结构
 
 ```
-gayt/
+gat/
 ├── src/              # 前端源码
 │   ├── components/   # React 组件
 │   ├── store/        # Zustand 状态管理

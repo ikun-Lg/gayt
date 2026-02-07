@@ -41,7 +41,7 @@ export function WelcomeDialog({ onWorkDirSelected }: WelcomeDialogProps) {
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold">欢迎使用 Gayt</h1>
+            <h1 className="text-2xl font-bold">欢迎使用 GAT</h1>
             <p className="text-muted-foreground mt-2">
               多项目 Git 管理工具
             </p>
