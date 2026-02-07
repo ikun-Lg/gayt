@@ -7,7 +7,8 @@
       "Bash(npm install:*)",
       "Bash(pnpm tauri build:*)",
       "Bash(pnpm build:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(cargo tree:*)"
     ]
   }
 }

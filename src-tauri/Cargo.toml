@@ -26,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Git operations
-git2 = "0.19"
+git2 = { version = "0.19", features = ["vendored-openssl"] }
 
 # Error handling
 thiserror = "2.0"
@@ -41,7 +41,7 @@ ignore = "0.4"
 rayon = "1.10"
 
 # HTTP client for AI APIs
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
