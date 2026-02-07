@@ -24,45 +24,51 @@ export function RepoListItem({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
-        'hover:bg-accent/50',
-        isSelected && 'bg-accent'
+        'group flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-all duration-300',
+        'hover:bg-accent/40 hover:shadow-md hover:-translate-y-0.5 active:scale-95 btn-tactile animate-enter',
+        isSelected ? 'bg-primary/5 shadow-inner ring-1 ring-primary/20' : 'bg-transparent'
       )}
       onClick={onClick}
     >
-      <Checkbox checked={isBatchSelected} onToggle={onToggle} />
+      <div className="flex-shrink-0">
+        <Checkbox checked={isBatchSelected} onToggle={onToggle} />
+      </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{repo.name}</span>
+        <div className="flex items-center gap-2 mb-1">
+          <span className={cn(
+            "font-semibold truncate text-[15px] tracking-tight",
+            isSelected ? "text-primary" : "text-foreground"
+          )}>{repo.name}</span>
           {repo.hasChanges && (
-            <Badge variant="destructive" className="text-xs">
+            <Badge variant="destructive" className="px-1.5 py-0 h-4 min-w-4 flex items-center justify-center font-bold text-[10px] rounded-full">
               {repo.stagedCount + repo.unstagedCount + repo.untrackedCount}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 text-[12px] font-medium text-muted-foreground/80">
           {repo.branch && (
-            <span className="flex items-center gap-1">
-              <GitBranch className="w-3 h-3" />
+            <span className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded-md">
+              <GitBranch className="w-3 h-3 text-primary/70" />
               {repo.branch}
             </span>
           )}
           {(repo.ahead > 0 || repo.behind > 0) && (
-            <span className="text-xs">
-              {repo.ahead > 0 && `↑${repo.ahead}`}
-              {repo.ahead > 0 && repo.behind > 0 && ' '}
-              {repo.behind > 0 && `↓${repo.behind}`}
+            <span className="flex items-center gap-1.5 font-bold tracking-tighter">
+              {repo.ahead > 0 && <span className="text-primary">↑{repo.ahead}</span>}
+              {repo.behind > 0 && <span className="text-destructive">↓{repo.behind}</span>}
             </span>
           )}
         </div>
       </div>
 
-      {repo.hasChanges ? (
-        <AlertCircle className={cn('w-5 h-5 flex-shrink-0', statusColor)} />
-      ) : (
-        <GitCommit className={cn('w-5 h-5 flex-shrink-0', statusColor)} />
-      )}
+      <div className="flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
+        {repo.hasChanges ? (
+          <AlertCircle className={cn('w-4.5 h-4.5', statusColor)} />
+        ) : (
+          <GitCommit className={cn('w-4.5 h-4.5 opacity-40', statusColor)} />
+        )}
+      </div>
     </div>
   );
 }

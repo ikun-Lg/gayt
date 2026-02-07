@@ -24,20 +24,27 @@ export function RepoList({ onScanClick }: RepoListProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="font-semibold">仓库列表</h2>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between p-4 sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b">
+        <h2 className="font-bold text-sm tracking-wide text-muted-foreground uppercase">代码仓库</h2>
+        <div className="flex items-center gap-1.5">
           <Button
             size="icon"
             variant="ghost"
             onClick={handleRefresh}
             disabled={isRefreshing || repositories.length === 0}
+            className="w-8 h-8 hover:bg-primary/10 hover:text-primary transition-all duration-200"
             title="全部刷新"
           >
-            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
+            <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
           </Button>
-          <Button size="icon" variant="ghost" onClick={onScanClick} title="扫描目录">
-            <FolderOpen className="w-4 h-4" />
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            onClick={onScanClick} 
+            className="w-8 h-8 hover:bg-primary/10 hover:text-primary transition-all duration-200"
+            title="扫描目录"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
@@ -50,7 +57,7 @@ export function RepoList({ onScanClick }: RepoListProps) {
             <p className="text-xs mt-1">点击文件夹图标扫描目录</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="p-3 space-y-2">
             {repositories.map((repo) => (
               <RepoListItem
                 key={repo.path}

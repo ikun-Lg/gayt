@@ -8,6 +8,7 @@ import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { cn } from '../lib/utils';
 
 interface RepoViewProps {
   repoPath: string;
@@ -63,49 +64,57 @@ export function RepoView({ repoPath }: RepoViewProps) {
     } catch (e) {
       console.error('推送失败:', e);
       setPushError(String(e));
+      // 触发屏幕晃动反馈
+      const element = document.getElementById('repo-view-container');
+      if (element) {
+        element.classList.remove('animate-shake');
+        void element.offsetWidth; // trigger reflow
+        element.classList.add('animate-shake');
+      }
     } finally {
       setIsPushing(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div id="repo-view-container" className="flex flex-col h-full animate-enter">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div>
-          <h1 className="text-xl font-semibold">{repo.name}</h1>
-          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+      <div className="flex items-center justify-between p-6 bg-background/40 backdrop-blur-sm border-b transition-all duration-300">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-extrabold tracking-tight">{repo.name}</h1>
+          <div className="flex items-center gap-3">
             <BranchSelector repoPath={repoPath} />
             {(repo.ahead > 0 || repo.behind > 0) && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary font-bold px-2 py-0.5 rounded-md">
                 {repo.ahead > 0 && `↑${repo.ahead} `}
                 {repo.behind > 0 && `↓${repo.behind}`}
               </Badge>
             )}
             {repo.hasChanges && (
-              <span className="flex items-center gap-1 text-amber-500">
+              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1 px-2 py-0.5 rounded-md">
                 <AlertCircle className="w-3 h-3" />
-                未提交的更改
-              </span>
+                待提交
+              </Badge>
             )}
           </div>
         </div>
-        {needPush && (
-          <div className="flex items-center gap-2">
-            {pushError && (
-              <span className="text-xs text-red-500">{pushError}</span>
-            )}
+        <div className="flex items-center gap-3">
+          {pushError && (
+            <span className="text-xs font-medium text-destructive bg-destructive/10 px-2 py-1 rounded-md animate-shake">{pushError}</span>
+          )}
+          {needPush && (
             <Button
               size="sm"
-              variant="outline"
+              variant="default"
               onClick={handlePush}
               disabled={isPushing}
+              className="shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 active:scale-95 btn-tactile"
             >
-              <Upload className="w-4 h-4 mr-2" />
-              {isPushing ? '推送中...' : `推送 (${currentBranchInfo?.ahead || repo.ahead})`}
+              <Upload className={cn("w-4 h-4 mr-2", isPushing && "animate-pulse")} />
+              {isPushing ? '正在推送...' : `推送变更 (${currentBranchInfo?.ahead || repo.ahead})`}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* File list */}

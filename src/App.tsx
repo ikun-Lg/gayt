@@ -71,32 +71,37 @@ function App() {
   const showWelcome = !workDir;
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col bg-background selection:bg-primary/20">
       {/* 头部 */}
-      <header className="h-14 border-b flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <Github className="w-6 h-6" />
-          <h1 className="font-semibold">gayt</h1>
+      <header className="h-14 flex items-center justify-between px-6 sticky top-0 z-50 bg-glass drop-shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 bg-primary/10 rounded-lg">
+            <Github className="w-5 h-5 text-primary" />
+          </div>
+          <h1 className="font-bold tracking-tight text-lg">gayt</h1>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setShowSettings(true)}
-          title="设置"
-        >
-          <SettingsIcon className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowSettings(true)}
+            className="hover:bg-primary/10 hover:text-primary transition-colors duration-200"
+            title="设置"
+          >
+            <SettingsIcon className="w-5 h-5" />
+          </Button>
+        </div>
       </header>
 
       {/* 主内容 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 侧边栏 */}
-        <aside className="w-80 border-r flex flex-col">
+        <aside className="w-80 sidebar-glass flex flex-col shadow-inner">
           <RepoList onScanClick={() => setShowScanDialog(true)} />
         </aside>
 
         {/* 主视图 */}
-        <main className="flex-1">
+        <main className="flex-1 bg-background/50 relative">
           {selectedRepoPath ? (
             <RepoView repoPath={selectedRepoPath} />
           ) : repositories.length > 0 ? (
