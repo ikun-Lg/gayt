@@ -107,3 +107,29 @@ pub struct FileDiff {
     pub path: String,
     pub hunks: Vec<DiffHunk>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmoduleInfo {
+    pub name: String,
+    pub path: String,
+    pub url: String,
+    pub head_id: Option<String>,
+    pub index_id: Option<String>,
+    pub status: String, // e.g., "in_sync", "modified", "uninitialized"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtreeInfo {
+    pub prefix: String,
+    pub remote: String,
+    pub branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LfsStatus {
+    pub is_installed: bool,
+    pub tracked_files: Vec<String>,
+}

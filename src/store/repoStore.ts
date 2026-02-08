@@ -19,6 +19,9 @@ import type {
   RebaseState,
   RebaseTodo,
   FileDiff,
+  SubmoduleInfo,
+  SubtreeInfo,
+  LfsStatus,
 } from '../types';
 
 interface RepoStore {
@@ -39,6 +42,9 @@ interface RepoStore {
   mergeState: MergeState | null;
   rebaseState: RebaseState | null;
   historyChangeCount: number;
+  submodules: SubmoduleInfo[];
+  subtrees: SubtreeInfo[];
+  lfsStatus: LfsStatus | null;
 
   // Pagination state
   hasMoreCommits: boolean;
@@ -102,6 +108,20 @@ interface RepoStore {
   renameRemote: (path: string, oldName: string, newName: string) => Promise<void>;
   setRemoteUrl: (path: string, name: string, url: string) => Promise<void>;
 
+  // Submodule actions
+  loadSubmodules: (path: string) => Promise<void>;
+  updateSubmodule: (path: string) => Promise<void>;
+  initSubmodule: (path: string) => Promise<void>;
+
+  // LFS actions
+  loadLfsStatus: (path: string) => Promise<void>;
+  lfsTrack: (path: string, pattern: string) => Promise<void>;
+  lfsUntrack: (path: string, pattern: string) => Promise<void>;
+
+  // Subtree actions
+  loadSubtrees: (path: string) => Promise<void>;
+  addSubtree: (path: string, prefix: string, remote: string, branch: string) => Promise<void>;
+
   // Conflict operations
   getMergeState: (path: string) => Promise<void>;
   resolveConflict: (path: string, filePath: string, version: ConflictResolution) => Promise<void>;
@@ -156,6 +176,9 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   stashes: [],
   tags: [],
   remotes: [],
+  submodules: [],
+  subtrees: [],
+  lfsStatus: null,
   selectedFile: null,
   selectedFileDiff: null,
   mergeState: null,
@@ -190,6 +213,9 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
       get().loadTags(path);
       get().loadRemotes(path);
       get().getMergeState(path);
+      get().loadSubmodules(path);
+      get().loadLfsStatus(path);
+      get().loadSubtrees(path);
     }
   },
 
@@ -961,5 +987,77 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   amendRebaseCommit: async (path, newMessage) => {
     await invoke('amend_rebase_commit', { path, newMessage });
     await get().loadCommitHistory(path);
+  },
+
+  loadSubmodules: async (path) => {
+    try {
+      const submodules = await invoke<SubmoduleInfo[]>('get_submodules', { path });
+      set({ submodules });
+    } catch (e) {
+      console.error('Failed to load submodules:', e);
+    }
+  },
+
+  updateSubmodule: async (path) => {
+    try {
+      await invoke('update_submodule', { path });
+      await get().loadSubmodules(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  initSubmodule: async (path) => {
+    try {
+      await invoke('init_submodule', { path });
+      await get().loadSubmodules(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadLfsStatus: async (path) => {
+    try {
+      const lfsStatus = await invoke<LfsStatus>('get_lfs_status', { path });
+      set({ lfsStatus });
+    } catch (e) {
+      console.error('Failed to load LFS status:', e);
+    }
+  },
+
+  lfsTrack: async (path, pattern) => {
+    try {
+      await invoke('lfs_track', { path, pattern });
+      await get().loadLfsStatus(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  lfsUntrack: async (path, pattern) => {
+    try {
+      await invoke('lfs_untrack', { path, pattern });
+      await get().loadLfsStatus(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadSubtrees: async (path) => {
+    try {
+      const subtrees = await invoke<SubtreeInfo[]>('get_subtrees', { path });
+      set({ subtrees });
+    } catch (e) {
+      console.error('Failed to load subtrees:', e);
+    }
+  },
+
+  addSubtree: async (path, prefix, remote, branch) => {
+    try {
+      await invoke('add_subtree', { path, prefix, remote, branch });
+      await get().loadSubtrees(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 }));

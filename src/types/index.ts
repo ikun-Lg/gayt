@@ -255,3 +255,23 @@ export interface FileDiff {
   path: string;
   hunks: DiffHunk[];
 }
+
+export interface SubmoduleInfo {
+  name: string;
+  path: string;
+  url: string;
+  headId: string | null;
+  indexId: string | null;
+  status: string;
+}
+
+export interface SubtreeInfo {
+  prefix: string;
+  remote: string;
+  branch: string;
+}
+
+export interface LfsStatus {
+  isInstalled: boolean;
+  trackedFiles: string[];
+}

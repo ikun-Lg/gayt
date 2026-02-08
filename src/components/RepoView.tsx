@@ -11,7 +11,10 @@ import { ConflictPanel } from './ConflictPanel';
 import { RebasePanel } from './RebasePanel';
 import { ProviderPanel } from './ProviderPanel';
 import { ShortcutHelp } from './ShortcutHelp';
-import { AlertCircle, Upload, RotateCcw, Download, GitGraph, Clock, FileDiff, Archive, Tag, Globe, AlertTriangle, GitBranch, Keyboard } from 'lucide-react';
+import { SubmodulePanel } from './SubmodulePanel';
+import { LfsPanel } from './LfsPanel';
+import { SubtreePanel } from './SubtreePanel';
+import { AlertCircle, Upload, RotateCcw, Download, GitGraph, Clock, FileDiff, Archive, Tag, Globe, AlertTriangle, GitBranch, Keyboard, Box, Database, Share2 } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { useState, useEffect } from 'react';
@@ -29,7 +32,7 @@ interface RepoViewProps {
   repoPath: string;
 }
 
-type ViewMode = 'changes' | 'history' | 'stashes' | 'tags' | 'conflicts' | 'rebase' | 'collaboration';
+type ViewMode = 'changes' | 'history' | 'stashes' | 'tags' | 'conflicts' | 'rebase' | 'collaboration' | 'submodules' | 'lfs' | 'subtrees';
 
 export function RepoView({ repoPath }: RepoViewProps) {
   const {
@@ -532,6 +535,42 @@ export function RepoView({ repoPath }: RepoViewProps) {
                 <GitPullRequest className="w-3.5 h-3.5" />
                 协作
               </button>
+              <button
+                onClick={() => setViewMode('submodules')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'submodules'
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                <Box className="w-3.5 h-3.5" />
+                子模块
+              </button>
+              <button
+                onClick={() => setViewMode('lfs')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'lfs'
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                <Database className="w-3.5 h-3.5" />
+                LFS
+              </button>
+              <button
+                onClick={() => setViewMode('subtrees')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all",
+                  viewMode === 'subtrees'
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                )}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                子树
+              </button>
               {mergeState?.isMergeInProgress && (
                 <button
                   onClick={() => setViewMode('conflicts')}
@@ -735,6 +774,27 @@ export function RepoView({ repoPath }: RepoViewProps) {
             {viewMode === 'collaboration' && (
                <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
                  <ProviderPanel repoPath={repoPath} />
+               </div>
+            )}
+
+            {/* Submodules View */}
+            {viewMode === 'submodules' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <SubmodulePanel />
+               </div>
+            )}
+
+            {/* LFS View */}
+            {viewMode === 'lfs' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <LfsPanel />
+               </div>
+            )}
+
+            {/* Subtrees View */}
+            {viewMode === 'subtrees' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <SubtreePanel />
                </div>
             )}
         </div>

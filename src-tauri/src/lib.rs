@@ -4,6 +4,7 @@ mod infrastructure;
 mod error;
 
 use commands::*;
+use commands::extensions;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -84,6 +85,15 @@ pub fn run() {
             fetch_job_logs,
             // Editor command
             open_in_external_editor,
+            // Git extension commands
+            extensions::get_submodules,
+            extensions::update_submodule,
+            extensions::init_submodule,
+            extensions::get_lfs_status,
+            extensions::lfs_track,
+            extensions::lfs_untrack,
+            extensions::get_subtrees,
+            extensions::add_subtree,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
