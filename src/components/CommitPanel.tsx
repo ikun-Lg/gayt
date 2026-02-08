@@ -6,6 +6,8 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { isShortcutMatch } from '../lib/shortcuts';
+import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CommitPanelProps {
   repoPath: string | string[];
@@ -130,7 +132,30 @@ export function CommitPanel({ repoPath, mode }: CommitPanelProps) {
                   </div>
                 ) : (
                   <div className="markdown-content text-sm text-foreground/90">
-                    <Markdown>{reviewResult || "未发现问题。"}</Markdown>
+                    <Markdown
+                      components={{
+                        code(props) {
+                          const {children, className, node, ...rest} = props
+                          const match = /language-(\w+)/.exec(className || '')
+                          return match ? (
+                            <SyntaxHighlighter
+                              {...rest}
+                              PreTag="div"
+                              children={String(children).replace(/\n$/, '')}
+                              language={match[1]}
+                              style={vscDarkPlus}
+                              customStyle={{ margin: 0, padding: '0.5rem', borderRadius: '0.375rem', fontSize: '11px' }}
+                            />
+                          ) : (
+                            <code {...rest} className={className}>
+                              {children}
+                            </code>
+                          )
+                        }
+                      }}
+                    >
+                      {reviewResult || "未发现问题。"}
+                    </Markdown>
                   </div>
                 )}
               </div>

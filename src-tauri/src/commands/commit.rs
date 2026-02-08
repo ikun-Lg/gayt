@@ -338,6 +338,8 @@ pub async fn generate_commit_message(
     path: String,
     provider: String,
     api_key: Option<String>,
+    api_endpoint: Option<String>,
+    model: Option<String>,
     diff_content: Option<String>,
     commit_language: Option<String>,
     commit_format: Option<String>,
@@ -358,6 +360,9 @@ pub async fn generate_commit_message(
     match provider.as_str() {
         "deepseek" => generate_with_deepseek(&diff, api_key, lang, format, custom_prompt.as_deref()).await,
         "glm" => generate_with_glm(&diff, api_key, lang, format, custom_prompt.as_deref()).await,
+        "openai" => generate_with_openai(&diff, api_key, api_endpoint, model, lang, format, custom_prompt.as_deref()).await,
+        "claude" => generate_with_claude(&diff, api_key, api_endpoint, model, lang, format, custom_prompt.as_deref()).await,
+        "ollama" => generate_with_ollama(&diff, api_endpoint, model, lang, format, custom_prompt.as_deref()).await,
         _ => generate_heuristic(&repo, &diff, lang),
     }
 }
@@ -731,6 +736,8 @@ pub async fn review_code(
     path: String,
     provider: String,
     api_key: Option<String>,
+    api_endpoint: Option<String>,
+    model: Option<String>,
     diff_content: Option<String>,
     custom_prompt: Option<String>,
 ) -> std::result::Result<String, String> {
@@ -746,6 +753,9 @@ pub async fn review_code(
     match provider.as_str() {
         "deepseek" => review_with_deepseek(&diff, api_key, custom_prompt.as_deref()).await,
         "glm" => review_with_glm(&diff, api_key, custom_prompt.as_deref()).await,
+        "openai" => review_with_openai(&diff, api_key, api_endpoint, model, custom_prompt.as_deref()).await,
+        "claude" => review_with_claude(&diff, api_key, api_endpoint, model, custom_prompt.as_deref()).await,
+        "ollama" => review_with_ollama(&diff, api_endpoint, model, custom_prompt.as_deref()).await,
         _ => Err("Unsupported provider for code review".to_string()),
     }
 }
@@ -873,3 +883,336 @@ async fn review_with_glm(
 
     Ok(content.to_string())
 }
+
+async fn generate_with_openai(
+    diff: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+    model: Option<String>,
+    lang: &str,
+    format: &str,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<CommitSuggestion, String> {
+    let api_key = api_key.ok_or("OpenAI 需要 API Key".to_string())?;
+    let endpoint = endpoint.unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+    let model = model.unwrap_or_else(|| "gpt-4o".to_string());
+
+    let client = reqwest::Client::new();
+
+    let (system_prompt, user_prompt) = get_prompts(lang, format, custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system_prompt },
+                { "role": "user", "content": user_prompt }
+            ],
+            "temperature": 0.3,
+            "max_tokens": 500
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    parse_common_response(response, lang).await
+}
+
+async fn generate_with_claude(
+    diff: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+    model: Option<String>,
+    lang: &str,
+    format: &str,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<CommitSuggestion, String> {
+    let api_key = api_key.ok_or("Claude 需要 API Key".to_string())?;
+    let endpoint = endpoint.unwrap_or_else(|| "https://api.anthropic.com/v1/messages".to_string());
+    let model = model.unwrap_or_else(|| "claude-3-5-sonnet-20240620".to_string());
+
+    let client = reqwest::Client::new();
+
+    let (system_prompt, user_prompt) = get_prompts(lang, format, custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("Content-Type", "application/json")
+        .json(&json!({
+            "model": model,
+            "system": system_prompt,
+            "messages": [
+                { "role": "user", "content": user_prompt }
+            ],
+            "max_tokens": 1000 // Claude requires max_tokens
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("API error: {} - {}", status, text));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|e| format!("JSON error: {}", e))?;
+    // Claude response format: { "content": [ { "type": "text", "text": "..." } ] }
+    let content = json["content"][0]["text"]
+        .as_str()
+        .ok_or("Invalid response format".to_string())?;
+
+    parse_ai_response(content, lang)
+}
+
+async fn generate_with_ollama(
+    diff: &str,
+    endpoint: Option<String>,
+    model: Option<String>,
+    lang: &str,
+    format: &str,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<CommitSuggestion, String> {
+    let endpoint = endpoint.unwrap_or_else(|| "http://localhost:11434/api/chat".to_string());
+    let model = model.unwrap_or_else(|| "llama3".to_string());
+
+    let client = reqwest::Client::new();
+
+    let (system_prompt, user_prompt) = get_prompts(lang, format, custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system_prompt },
+                { "role": "user", "content": user_prompt }
+            ],
+            "stream": false,
+            "options": {
+                "temperature": 0.3
+            }
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    parse_common_response(response, lang).await
+}
+
+async fn review_with_openai(
+    diff: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+    model: Option<String>,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<String, String> {
+    let api_key = api_key.ok_or("OpenAI 需要 API Key".to_string())?;
+    let endpoint = endpoint.unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+    let model = model.unwrap_or_else(|| "gpt-4o".to_string());
+
+    let client = reqwest::Client::new();
+    let (system_prompt, user_prompt) = get_review_prompts(custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system_prompt },
+                { "role": "user", "content": user_prompt }
+            ],
+            "temperature": 0.3
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    parse_common_string_response(response).await
+}
+
+async fn review_with_claude(
+    diff: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+    model: Option<String>,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<String, String> {
+    let api_key = api_key.ok_or("Claude 需要 API Key".to_string())?;
+    let endpoint = endpoint.unwrap_or_else(|| "https://api.anthropic.com/v1/messages".to_string());
+    let model = model.unwrap_or_else(|| "claude-3-5-sonnet-20240620".to_string());
+
+    let client = reqwest::Client::new();
+    let (system_prompt, user_prompt) = get_review_prompts(custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("Content-Type", "application/json")
+        .json(&json!({
+            "model": model,
+            "system": system_prompt,
+            "messages": [
+                { "role": "user", "content": user_prompt }
+            ],
+            "max_tokens": 1000
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("API error: {} - {}", status, text));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|e| format!("JSON error: {}", e))?;
+    let content = json["content"][0]["text"]
+        .as_str()
+        .ok_or("Invalid response format".to_string())?;
+
+    Ok(content.to_string())
+}
+
+async fn review_with_ollama(
+    diff: &str,
+    endpoint: Option<String>,
+    model: Option<String>,
+    custom_prompt: Option<&str>,
+) -> std::result::Result<String, String> {
+    let endpoint = endpoint.unwrap_or_else(|| "http://localhost:11434/api/chat".to_string());
+    let model = model.unwrap_or_else(|| "llama3".to_string());
+
+    let client = reqwest::Client::new();
+    let (system_prompt, user_prompt) = get_review_prompts(custom_prompt, diff);
+
+    let response = client
+        .post(&endpoint)
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system_prompt },
+                { "role": "user", "content": user_prompt }
+            ],
+            "stream": false,
+            "options": {
+                "temperature": 0.3
+            }
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    parse_common_string_response(response).await
+}
+
+// Helpers
+fn get_prompts(lang: &str, format: &str, custom_prompt: Option<&str>, diff: &str) -> (String, String) {
+    if let Some(custom) = custom_prompt {
+        let user_prompt = custom.replace("{{changes}}", diff);
+        (
+            "你是一个专业的 Git commit 消息生成助手。请只返回一个 commit 消息。".to_string(),
+            user_prompt
+        )
+    } else {
+        match (lang, format) {
+            ("zh", "conventional") => (
+                "你是一个专业的 Git commit 消息生成助手。请根据代码变更生成约定式提交消息。
+返回格式为单个 JSON 对象（不是数组），包含以下字段：
+- type: 类型 (feat/fix/docs/style/refactor/perf/test/chore/revert/build/ci)
+- scope: 可选的作用域
+- description: 简短的中文描述
+- body: 可选的详细描述
+
+请确保：
+1. 只返回一个 JSON 对象，不要返回数组
+2. type 使用小写英文
+3. description 使用简洁的中文
+4. 返回纯 JSON，不要包含 markdown 格式".to_string(),
+                format!("请根据以下 Git 变更生成一个 commit 消息（只返回一个 JSON 对象）：\n\n{}", diff)
+            ),
+            ("en", "conventional") => (
+                "You are a professional Git commit message generator. Generate conventional commit messages based on code changes.
+Return a single JSON object (not an array) with these fields:
+- type: commit type (feat/fix/docs/style/refactor/perf/test/chore/revert/build/ci)
+- scope: optional scope
+- description: short description in English
+- body: optional detailed description
+
+Requirements:
+1. Return only ONE JSON object, not an array
+2. Use lowercase for type
+3. Use concise English for description
+4. Return pure JSON without markdown formatting".to_string(),
+                format!("Generate a single commit message for these changes (return one JSON object only):\n\n{}", diff)
+            ),
+            ("zh", "custom") => (
+                "你是一个专业的 Git commit 消息生成助手。请只返回一个 commit 消息。".to_string(),
+                format!("请为以下变更生成一个 commit 消息：\n\n{}", diff)
+            ),
+            _ => (
+                "You are a professional Git commit message generator. Generate only ONE commit message.".to_string(),
+                format!("Generate a single commit message for these changes:\n\n{}", diff)
+            )
+        }
+    }
+}
+
+fn get_review_prompts(custom_prompt: Option<&str>, diff: &str) -> (String, String) {
+    let system_prompt = "你是一个由于 Google Deepmind 团队设计的高级 AI 编程助手。你的任务是审查代码变更。
+请关注以下几点：
+1. 潜在的 bug 和错误
+2. 代码风格和最佳实践
+3. 性能问题
+4. 安全隐患
+
+请使用 Markdown 格式返回审查结果。保持客观、建设性。如果代码看起来不错，也可以给出肯定。".to_string();
+
+    let user_prompt = if let Some(custom) = custom_prompt {
+        custom.replace("{{changes}}", diff)
+    } else {
+        format!("请审查以下代码变更：\n\n{}", diff)
+    };
+    
+    (system_prompt, user_prompt)
+}
+
+async fn parse_common_response(response: reqwest::Response, lang: &str) -> std::result::Result<CommitSuggestion, String> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("API error: {} - {}", status, text));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|e| format!("JSON error: {}", e))?;
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or("Invalid response format".to_string())?;
+
+    parse_ai_response(content, lang)
+}
+
+async fn parse_common_string_response(response: reqwest::Response) -> std::result::Result<String, String> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("API error: {} - {}", status, text));
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|e| format!("JSON error: {}", e))?;
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or("Invalid response format".to_string())?;
+
+    Ok(content.to_string())
+}
+

@@ -689,7 +689,16 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     return await invoke<CommitSuggestion>('generate_commit_message', {
       path: repoPath,
       provider: settings.aiProvider,
-      apiKey: settings.aiProvider === 'deepseek' ? settings.deepseekApiKey : settings.glmApiKey,
+      apiKey: settings.aiProvider === 'deepseek' ? settings.deepseekApiKey : 
+              settings.aiProvider === 'glm' ? settings.glmApiKey :
+              settings.aiProvider === 'openai' ? settings.openaiApiKey :
+              settings.aiProvider === 'claude' ? settings.claudeApiKey : null,
+      apiEndpoint: settings.aiProvider === 'openai' ? settings.openaiEndpoint :
+                   settings.aiProvider === 'claude' ? settings.claudeEndpoint :
+                   settings.aiProvider === 'ollama' ? settings.ollamaEndpoint : null,
+      model: settings.aiProvider === 'openai' ? settings.openaiModel :
+             settings.aiProvider === 'claude' ? settings.claudeModel :
+             settings.aiProvider === 'ollama' ? settings.ollamaModel : null,
       diffContent,
       commitLanguage: settings.commitLanguage,
       commitFormat: settings.commitFormat,
@@ -705,7 +714,16 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     const content = await invoke<string>('review_code', {
       path: repoPath,
       provider: settings.aiProvider,
-      apiKey: settings.aiProvider === 'deepseek' ? settings.deepseekApiKey : settings.glmApiKey,
+      apiKey: settings.aiProvider === 'deepseek' ? settings.deepseekApiKey : 
+              settings.aiProvider === 'glm' ? settings.glmApiKey :
+              settings.aiProvider === 'openai' ? settings.openaiApiKey :
+              settings.aiProvider === 'claude' ? settings.claudeApiKey : null,
+      apiEndpoint: settings.aiProvider === 'openai' ? settings.openaiEndpoint :
+                   settings.aiProvider === 'claude' ? settings.claudeEndpoint :
+                   settings.aiProvider === 'ollama' ? settings.ollamaEndpoint : null,
+      model: settings.aiProvider === 'openai' ? settings.openaiModel :
+             settings.aiProvider === 'claude' ? settings.claudeModel :
+             settings.aiProvider === 'ollama' ? settings.ollamaModel : null,
       diffContent,
       customPrompt: settings.customPrompt,
     });

@@ -152,9 +152,17 @@ export interface RemoteInfo {
 // Settings types
 export interface Settings {
   workDir: string | null;
-  aiProvider: "heuristic" | "deepseek" | "glm";
+  aiProvider: "heuristic" | "deepseek" | "glm" | "openai" | "claude" | "ollama";
   deepseekApiKey: string | null;
   glmApiKey: string | null;
+  openaiApiKey: string | null;
+  openaiEndpoint: string | null;
+  openaiModel: string | null;
+  claudeApiKey: string | null;
+  claudeEndpoint: string | null;
+  claudeModel: string | null;
+  ollamaEndpoint: string | null;
+  ollamaModel: string | null;
   commitLanguage: "zh" | "en";
   commitFormat: "conventional" | "custom";
   customPrompt: string | null;

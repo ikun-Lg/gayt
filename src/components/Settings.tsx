@@ -43,6 +43,22 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     setCustomPrompt,
     setGitUsername: saveGitUsername,
     setGitPassword: saveGitPassword,
+    openaiApiKey,
+    openaiEndpoint,
+    openaiModel,
+    claudeApiKey,
+    claudeEndpoint,
+    claudeModel,
+    ollamaEndpoint,
+    ollamaModel,
+    setOpenaiApiKey,
+    setOpenaiEndpoint,
+    setOpenaiModel,
+    setClaudeApiKey,
+    setClaudeEndpoint,
+    setClaudeModel,
+    setOllamaEndpoint,
+    setOllamaModel,
   } = useSettingsStore();
 
   const { mode, setMode, primaryColor, setPrimaryColor } = useThemeStore();
@@ -304,6 +320,30 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     >
                       GLM
                     </Button>
+                    <Button
+                      type="button"
+                      variant={aiProvider === 'openai' ? 'default' : 'outline'}
+                      onClick={() => setAiProvider('openai')}
+                      className="w-full"
+                    >
+                      OpenAI
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={aiProvider === 'claude' ? 'default' : 'outline'}
+                      onClick={() => setAiProvider('claude')}
+                      className="w-full"
+                    >
+                      Claude
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={aiProvider === 'ollama' ? 'default' : 'outline'}
+                      onClick={() => setAiProvider('ollama')}
+                      className="w-full"
+                    >
+                      Ollama
+                    </Button>
                   </div>
                 </div>
 
@@ -336,6 +376,90 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     <p className="text-xs text-muted-foreground">
                       在 <a href="https://open.bigmodel.cn/usercenter/apikeys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">智谱 AI 平台</a> 获取 API Key
                     </p>
+                  </div>
+                )}
+
+                {/* OpenAI Settings */}
+                {aiProvider === 'openai' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>OpenAI API Key</Label>
+                      <Input
+                        type="password"
+                        value={openaiApiKey || ''}
+                        onChange={(e) => setOpenaiApiKey(e.target.value)}
+                        placeholder="sk-..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Endpoint (可选)</Label>
+                      <Input
+                        value={openaiEndpoint || ''}
+                        onChange={(e) => setOpenaiEndpoint(e.target.value)}
+                        placeholder="https://api.openai.com/v1/chat/completions"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Model (可选)</Label>
+                      <Input
+                        value={openaiModel || ''}
+                        onChange={(e) => setOpenaiModel(e.target.value)}
+                        placeholder="gpt-4o"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Claude Settings */}
+                {aiProvider === 'claude' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Claude API Key</Label>
+                      <Input
+                        type="password"
+                        value={claudeApiKey || ''}
+                        onChange={(e) => setClaudeApiKey(e.target.value)}
+                        placeholder="sk-ant-..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Endpoint (可选)</Label>
+                      <Input
+                        value={claudeEndpoint || ''}
+                        onChange={(e) => setClaudeEndpoint(e.target.value)}
+                        placeholder="https://api.anthropic.com/v1/messages"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Model (可选)</Label>
+                      <Input
+                        value={claudeModel || ''}
+                        onChange={(e) => setClaudeModel(e.target.value)}
+                        placeholder="claude-3-5-sonnet-20240620"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Ollama Settings */}
+                {aiProvider === 'ollama' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Endpoint</Label>
+                      <Input
+                        value={ollamaEndpoint || ''}
+                        onChange={(e) => setOllamaEndpoint(e.target.value)}
+                        placeholder="http://localhost:11434/api/chat"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Model</Label>
+                      <Input
+                        value={ollamaModel || ''}
+                        onChange={(e) => setOllamaModel(e.target.value)}
+                        placeholder="llama3"
+                      />
+                    </div>
                   </div>
                 )}
 

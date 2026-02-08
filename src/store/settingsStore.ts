@@ -20,9 +20,17 @@ interface SettingsStore extends Settings {
   setGitPassword: (password: string | null) => void;
   // Existing
   setWorkDir: (dir: string | null) => void;
-  setAiProvider: (provider: 'heuristic' | 'deepseek' | 'glm') => void;
+  setAiProvider: (provider: 'heuristic' | 'deepseek' | 'glm' | 'openai' | 'claude' | 'ollama') => void;
   setDeepseekApiKey: (key: string | null) => void;
   setGlmApiKey: (key: string | null) => void;
+  setOpenaiApiKey: (key: string | null) => void;
+  setOpenaiEndpoint: (endpoint: string | null) => void;
+  setOpenaiModel: (model: string | null) => void;
+  setClaudeApiKey: (key: string | null) => void;
+  setClaudeEndpoint: (endpoint: string | null) => void;
+  setClaudeModel: (model: string | null) => void;
+  setOllamaEndpoint: (endpoint: string | null) => void;
+  setOllamaModel: (model: string | null) => void;
   setCommitLanguage: (lang: 'zh' | 'en') => void;
   setCommitFormat: (format: 'conventional' | 'custom') => void;
   setCustomPrompt: (prompt: string | null) => void;
@@ -62,6 +70,14 @@ export const useSettingsStore = create<SettingsStore>()(
       aiProvider: 'heuristic',
       deepseekApiKey: null,
       glmApiKey: null,
+      openaiApiKey: null,
+      openaiEndpoint: null,
+      openaiModel: null,
+      claudeApiKey: null,
+      claudeEndpoint: null,
+      claudeModel: null,
+      ollamaEndpoint: null,
+      ollamaModel: null,
       commitLanguage: 'zh',
       commitFormat: 'conventional',
       customPrompt: null,
@@ -76,6 +92,14 @@ export const useSettingsStore = create<SettingsStore>()(
       setAiProvider: (provider) => set({ aiProvider: provider }),
       setDeepseekApiKey: (key) => set({ deepseekApiKey: key }),
       setGlmApiKey: (key) => set({ glmApiKey: key }),
+      setOpenaiApiKey: (key) => set({ openaiApiKey: key }),
+      setOpenaiEndpoint: (endpoint) => set({ openaiEndpoint: endpoint }),
+      setOpenaiModel: (model) => set({ openaiModel: model }),
+      setClaudeApiKey: (key) => set({ claudeApiKey: key }),
+      setClaudeEndpoint: (endpoint) => set({ claudeEndpoint: endpoint }),
+      setClaudeModel: (model) => set({ claudeModel: model }),
+      setOllamaEndpoint: (endpoint) => set({ ollamaEndpoint: endpoint }),
+      setOllamaModel: (model) => set({ ollamaModel: model }),
       setCommitLanguage: (lang) => set({ commitLanguage: lang }),
       setCommitFormat: (format) => set({ commitFormat: format }),
       setCustomPrompt: (prompt) => set({ customPrompt: prompt }),
