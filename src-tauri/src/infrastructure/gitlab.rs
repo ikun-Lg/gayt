@@ -210,4 +210,59 @@ impl GitProvider for GitLabProvider {
             url: issue.web_url,
         })
     }
+
+    async fn get_commit_status(&self, owner: &str, repo: &str, sha: &str) -> Result<Vec<crate::domain::provider::CommitStatus>> {
+        let project_path = self.project_path(owner, repo);
+        let url = format!("{}/api/v4/projects/{}/repository/commits/{}/statuses", self.base_url, project_path, sha);
+        
+        let res = self.client.get(&url)
+            .send()
+            .await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        if !res.status().is_success() {
+             return Err(AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("GitLab API Error: {}", res.status()))));
+        }
+
+        #[derive(Deserialize)]
+        struct GitLabStatus {
+            id: u64,
+            name: String,
+            status: String,
+            target_url: Option<String>,
+            description: Option<String>,
+        }
+
+        let statuses: Vec<GitLabStatus> = res.json().await
+             .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        Ok(statuses.into_iter().map(|s| {
+            crate::domain::provider::CommitStatus {
+                id: s.id.to_string(),
+                name: s.name,
+                status: s.status,
+                url: s.target_url,
+                description: s.description,
+            }
+        }).collect())
+    }
+
+    async fn get_job_logs(&self, owner: &str, repo: &str, job_id: &str) -> Result<String> {
+        let project_path = self.project_path(owner, repo);
+        let url = format!("{}/api/v4/projects/{}/jobs/{}/trace", self.base_url, project_path, job_id);
+        
+        let res = self.client.get(&url)
+            .send()
+            .await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        if !res.status().is_success() {
+             return Err(AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("GitLab API Error: {}", res.status()))));
+        }
+
+        let logs = res.text().await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        Ok(logs)
+    }
 }

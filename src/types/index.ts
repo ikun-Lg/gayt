@@ -164,6 +164,14 @@ export interface RemoteInfo {
 }
 
 // Provider types
+export interface CommitStatus {
+  id: string;
+  name: string;
+  status: string;
+  url: string | null;
+  description: string | null;
+}
+
 export interface PullRequest {
   id: string;
   number: number;

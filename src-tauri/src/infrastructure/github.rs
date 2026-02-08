@@ -203,6 +203,104 @@ impl GitProvider for GitHubProvider {
                 url: issue.html_url,
          })
     }
+
+    async fn get_commit_status(&self, owner: &str, repo: &str, sha: &str) -> Result<Vec<crate::domain::provider::CommitStatus>> {
+        let url = format!("https://api.github.com/repos/{}/{}/commits/{}/check-runs", owner, repo, sha);
+        let res = self.client.get(&url)
+            .send()
+            .await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        if !res.status().is_success() {
+             return Err(AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("GitHub API Error: {}", res.status()))));
+        }
+
+        #[derive(Deserialize)]
+        struct GitHubCheckRuns {
+            check_runs: Vec<GitHubCheckRun>,
+        }
+
+        #[derive(Deserialize)]
+        struct GitHubCheckRun {
+            id: u64,
+            name: String,
+            status: String,
+            conclusion: Option<String>,
+            html_url: String,
+        }
+
+        let checks: GitHubCheckRuns = res.json().await
+             .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        let mut results: Vec<crate::domain::provider::CommitStatus> = checks.check_runs.into_iter().map(|c| {
+            let status = if c.status == "completed" {
+                c.conclusion.unwrap_or_else(|| "unknown".to_string())
+            } else {
+                c.status
+            };
+
+            crate::domain::provider::CommitStatus {
+                id: c.id.to_string(),
+                name: c.name,
+                status,
+                url: Some(c.html_url),
+                description: None,
+            }
+        }).collect();
+
+        // Also fetch legacy statuses (for Jenkins, etc.)
+        let status_url = format!("https://api.github.com/repos/{}/{}/commits/{}/status", owner, repo, sha);
+        let status_res = self.client.get(&status_url).send().await;
+        if let Ok(res) = status_res {
+             if res.status().is_success() {
+                 #[derive(Deserialize)]
+                 struct GitHubCombinedStatus {
+                     statuses: Vec<GitHubStatusItem>,
+                 }
+                 #[derive(Deserialize)]
+                 struct GitHubStatusItem {
+                     id: u64,
+                     context: String,
+                     state: String,
+                     target_url: Option<String>,
+                     description: Option<String>,
+                 }
+                 
+                 if let Ok(combined) = res.json::<GitHubCombinedStatus>().await {
+                     for s in combined.statuses {
+                         results.push(crate::domain::provider::CommitStatus {
+                             id: s.id.to_string(),
+                             name: s.context,
+                             status: s.state,
+                             url: s.target_url,
+                             description: s.description,
+                         });
+                     }
+                 }
+             }
+        }
+
+        Ok(results)
+    }
+
+    async fn get_job_logs(&self, owner: &str, repo: &str, job_id: &str) -> Result<String> {
+        // For GitHub Actions, we use the jobs API
+        // GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs
+        let url = format!("https://api.github.com/repos/{}/{}/actions/jobs/{}/logs", owner, repo, job_id);
+        let res = self.client.get(&url)
+            .send()
+            .await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        if !res.status().is_success() {
+             return Err(AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("GitHub API Error: {}", res.status()))));
+        }
+
+        let logs = res.text().await
+            .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        Ok(logs)
+    }
 }
 
 // Helper struct for nested head/base refs

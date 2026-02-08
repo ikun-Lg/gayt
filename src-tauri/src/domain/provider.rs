@@ -29,6 +29,16 @@ pub struct CreatePullRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct CommitStatus {
+    pub id: String,
+    pub name: String,
+    pub status: String, // "success", "failure", "pending", "running", etc.
+    pub url: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Issue {
     pub id: String,
     pub number: u64,
@@ -54,4 +64,6 @@ pub trait GitProvider: Send + Sync {
     async fn get_issue_list(&self, owner: &str, repo: &str) -> Result<Vec<Issue>>;
     async fn create_pr(&self, owner: &str, repo: &str, pr: CreatePullRequest) -> Result<PullRequest>;
     async fn create_issue(&self, owner: &str, repo: &str, issue: CreateIssue) -> Result<Issue>;
+    async fn get_commit_status(&self, owner: &str, repo: &str, sha: &str) -> Result<Vec<CommitStatus>>;
+    async fn get_job_logs(&self, owner: &str, repo: &str, job_id: &str) -> Result<String>;
 }

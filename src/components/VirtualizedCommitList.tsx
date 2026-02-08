@@ -6,8 +6,10 @@ import { Button } from './ui/Button';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Badge } from './ui/Badge';
+import { CommitCIStatus } from './CommitCIStatus';
 
 interface VirtualizedCommitListProps {
+  repoPath: string;
   commits: CommitInfo[];
   rowHeight: number;
   showGraph?: boolean;
@@ -18,6 +20,7 @@ interface VirtualizedCommitListProps {
 }
 
 export function VirtualizedCommitList({
+  repoPath,
   commits,
   rowHeight,
   showGraph = false,
@@ -89,6 +92,7 @@ export function VirtualizedCommitList({
               }}
             >
               <CommitItem
+                repoPath={repoPath}
                 commit={commit}
                 graphOffset={effectiveGraphWidth}
               />
@@ -108,11 +112,12 @@ export function VirtualizedCommitList({
 }
 
 interface CommitItemProps {
+  repoPath: string;
   commit: CommitInfo;
   graphOffset: number;
 }
 
-function CommitItem({ commit, graphOffset }: CommitItemProps) {
+function CommitItem({ repoPath, commit, graphOffset }: CommitItemProps) {
   return (
     <div className="relative flex items-center gap-4 px-4 hover:bg-muted/30 transition-colors group">
       {/* Graph offset space */}
@@ -133,6 +138,7 @@ function CommitItem({ commit, graphOffset }: CommitItemProps) {
           <span className="text-sm font-medium truncate text-foreground/90">
             {commit.message}
           </span>
+          <CommitCIStatus repoPath={repoPath} sha={commit.id} />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
           <span className="font-mono text-[10px] opacity-70">{commit.shortId}</span>

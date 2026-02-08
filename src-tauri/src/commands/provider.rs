@@ -1,4 +1,4 @@
-use crate::domain::{GitProvider, PullRequest, Issue, CreatePullRequest, CreateIssue};
+use crate::domain::{GitProvider, PullRequest, Issue, CreatePullRequest, CreateIssue, CommitStatus};
 use crate::infrastructure::github::GitHubProvider;
 use crate::infrastructure::gitlab::GitLabProvider;
 use crate::error::{AppError, Result};
@@ -45,6 +45,27 @@ pub async fn create_issue(
 ) -> std::result::Result<Issue, String> {
     let (provider, owner, repo) = get_provider_and_repo(&path, token, domain).map_err(|e| e.to_string())?;
     provider.create_issue(&owner, &repo, issue).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn fetch_commit_status(
+    path: String,
+    token: String,
+    domain: Option<String>,
+    sha: String,
+) -> std::result::Result<Vec<CommitStatus>, String> {
+    let (provider, owner, repo) = get_provider_and_repo(&path, token, domain).map_err(|e| e.to_string())?;
+    provider.get_commit_status(&owner, &repo, &sha).await.map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub async fn fetch_job_logs(
+    path: String,
+    token: String,
+    domain: Option<String>,
+    job_id: String,
+) -> std::result::Result<String, String> {
+    let (provider, owner, repo) = get_provider_and_repo(&path, token, domain).map_err(|e| e.to_string())?;
+    provider.get_job_logs(&owner, &repo, &job_id).await.map_err(|e| e.to_string())
 }
 
 fn get_provider_and_repo(

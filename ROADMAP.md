@@ -184,10 +184,10 @@
   - [X] 创建 Issue
 
 #### 4.2 CI/CD 集成
-- [ ] **CI 状态显示**
-  - [ ] commit 旁边显示 CI 状态
-  - [ ] CI 日志查看
-  - [ ] 支持常见 CI（GitHub Actions/GitLab CI/Jenkins）
+- [x] **CI 状态显示**
+  - [x] commit 旁边显示 CI 状态
+  - [x] CI 日志查看
+  - [x] 支持常见 CI（GitHub Actions/GitLab CI/Jenkins）
 
 #### 4.3 外部工具集成
 - [ ] **编辑器集成**

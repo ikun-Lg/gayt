@@ -57,6 +57,7 @@ export function CommitListDisplay({ repoPath, showGraph }: CommitListDisplayProp
             )}
 
             <VirtualizedCommitList
+                repoPath={repoPath}
                 commits={commitsToDisplay}
                 rowHeight={56}
                 showGraph={showGraph && !isSearchMode} // Disable graph lines for search results as they might be disjointed

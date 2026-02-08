@@ -80,6 +80,8 @@ pub fn run() {
             fetch_issue_list,
             create_pr,
             create_issue,
+            provider::fetch_commit_status,
+            provider::fetch_job_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
