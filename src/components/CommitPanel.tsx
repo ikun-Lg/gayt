@@ -6,7 +6,7 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { isShortcutMatch } from '../lib/shortcuts';
-import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import SyntaxHighlighter from '../lib/syntaxHighlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CommitPanelProps {
@@ -135,7 +135,7 @@ export function CommitPanel({ repoPath, mode }: CommitPanelProps) {
                     <Markdown
                       components={{
                         code(props) {
-                          const {children, className, node, ...rest} = props
+                          const {children, className, node, ref, ...rest} = props
                           const match = /language-(\w+)/.exec(className || '')
                           return match ? (
                             <SyntaxHighlighter
@@ -147,7 +147,7 @@ export function CommitPanel({ repoPath, mode }: CommitPanelProps) {
                               customStyle={{ margin: 0, padding: '0.5rem', borderRadius: '0.375rem', fontSize: '11px' }}
                             />
                           ) : (
-                            <code {...rest} className={className}>
+                            <code {...props} className={className}>
                               {children}
                             </code>
                           )

@@ -4,42 +4,11 @@ import { FileDiff } from '../types';
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '../lib/utils';
 import { useRepoStore } from '../store/repoStore';
-import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import SyntaxHighlighter from '../lib/syntaxHighlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { materialLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useThemeStore } from '../store/themeStore';
-
-// Language support
-import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
-import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
-import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
-import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust';
-import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
-import css from 'react-syntax-highlighter/dist/esm/languages/prism/css';
-import markdown from 'react-syntax-highlighter/dist/esm/languages/prism/markdown';
-import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
-import go from 'react-syntax-highlighter/dist/esm/languages/prism/go';
-import java from 'react-syntax-highlighter/dist/esm/languages/prism/java';
-import c from 'react-syntax-highlighter/dist/esm/languages/prism/c';
-import cpp from 'react-syntax-highlighter/dist/esm/languages/prism/cpp';
-
-SyntaxHighlighter.registerLanguage('tsx', tsx);
-SyntaxHighlighter.registerLanguage('typescript', typescript);
-SyntaxHighlighter.registerLanguage('ts', typescript);
-SyntaxHighlighter.registerLanguage('javascript', javascript);
-SyntaxHighlighter.registerLanguage('js', javascript);
-SyntaxHighlighter.registerLanguage('rust', rust);
-SyntaxHighlighter.registerLanguage('rs', rust);
-SyntaxHighlighter.registerLanguage('json', json);
-SyntaxHighlighter.registerLanguage('css', css);
-SyntaxHighlighter.registerLanguage('markdown', markdown);
-SyntaxHighlighter.registerLanguage('md', markdown);
-SyntaxHighlighter.registerLanguage('python', python);
-SyntaxHighlighter.registerLanguage('py', python);
-SyntaxHighlighter.registerLanguage('go', go);
-SyntaxHighlighter.registerLanguage('java', java);
-SyntaxHighlighter.registerLanguage('c', c);
-SyntaxHighlighter.registerLanguage('cpp', cpp);
+import React from 'react';
 
 interface DiffViewProps {
   repoPath: string;
@@ -49,6 +18,19 @@ interface DiffViewProps {
 }
 
 type ViewMode = 'unified' | 'split';
+
+// Memoized code block to prevent re-renders of unchanged lines
+const CodeBlock = React.memo(({ content, language, style }: { content: string, language: string, style: any }) => (
+  <SyntaxHighlighter
+      language={language}
+      style={style}
+      customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: 'inherit' }}
+      wrapLongLines={true}
+      PreTag="span" 
+  >
+      {content}
+  </SyntaxHighlighter>
+));
 
 export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
   const { stageChunk, selectedRepoPath } = useRepoStore();
@@ -78,12 +60,10 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
     }
   }, [filename]);
 
-  // Determine syntax style
-  // We need to check if 'dark' class is present on html or based on system preference if mode is 'system'
-  // But useThemeStore gives us 'light' | 'dark' | 'system'.
-  // We can use a simpler heuristic or just default to vscDarkPlus for dark mode.
-  const isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const syntaxStyle = isDark ? vscDarkPlus : materialLight;
+  const syntaxStyle = useMemo(() => {
+    const isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return isDark ? vscDarkPlus : materialLight;
+  }, [mode]);
 
   // Reset selection when diff changes
   useEffect(() => {
@@ -106,7 +86,6 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
   const toggleHunk = (hunkIndex: number, shouldSelect: boolean) => {
     const newSet = new Set(selectedIndices);
     diff.hunks[hunkIndex].lines.forEach((line, lineIndex) => {
-      // Only select/deselect change lines, ignore context
       if (line.origin === '+' || line.origin === '-') {
         const key = `${hunkIndex}-${lineIndex}`;
         if (shouldSelect) {
@@ -134,20 +113,6 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
     } finally {
       setIsStaging(false);
     }
-  };
-
-  const renderContent = (content: string) => {
-    return (
-        <SyntaxHighlighter
-            language={language}
-            style={syntaxStyle}
-            customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: 'inherit' }}
-            wrapLongLines={true}
-            PreTag="span" 
-        >
-            {content}
-        </SyntaxHighlighter>
-    );
   };
 
   return (
@@ -273,7 +238,7 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
                             {line.origin === '-' && <Minus className="w-3 h-3" />}
                           </div>
                           <div className={cn("px-2 py-0.5 whitespace-pre-wrap break-all flex-1", textClass)}>
-                            {renderContent(line.content)}
+                            <CodeBlock content={line.content} language={language} style={syntaxStyle} />
                           </div>
                         </div>
                       );
@@ -286,9 +251,9 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
                         hunk={hunk} 
                         hunkIndex={hunkIndex} 
                         selectedIndices={selectedIndices} 
-                        toggleLine={toggleLine} 
-                        renderContent={renderContent}
                         onToggleLine={toggleLine}
+                        language={language}
+                        syntaxStyle={syntaxStyle}
                     />
                   </div>
               )}
@@ -301,56 +266,56 @@ export function DiffView({ repoPath, filename, diff, onClose }: DiffViewProps) {
 }
 
 // Helper component for Split View to handle the complex alignment logic
-function SplitViewRows({ hunk, hunkIndex, selectedIndices, renderContent, onToggleLine }: any) {
-    // Process lines to create aligned rows
-    const rows: { left?: any, right?: any, leftIndex?: number, rightIndex?: number }[] = [];
-    
-    let i = 0;
-    while (i < hunk.lines.length) {
-        const line = hunk.lines[i];
-        
-        if (line.origin === ' ') {
-            rows.push({ left: line, right: line, leftIndex: i, rightIndex: i });
-            i++;
-        } else if (line.origin === '-') {
-            // Check if followed by +
-            let j = i + 1;
-            // Collect all consecutive -
-            const deletions = [line];
-            const delIndices = [i];
+function SplitViewRows({ hunk, hunkIndex, selectedIndices, onToggleLine, language, syntaxStyle }: any) {
+    // Memoize the rows calculation
+    const rows = useMemo(() => {
+        const result: { left?: any, right?: any, leftIndex?: number, rightIndex?: number }[] = [];
+        let i = 0;
+        while (i < hunk.lines.length) {
+            const line = hunk.lines[i];
             
-            while (j < hunk.lines.length && hunk.lines[j].origin === '-') {
-                deletions.push(hunk.lines[j]);
-                delIndices.push(j);
-                j++;
+            if (line.origin === ' ') {
+                result.push({ left: line, right: line, leftIndex: i, rightIndex: i });
+                i++;
+            } else if (line.origin === '-') {
+                let j = i + 1;
+                const deletions = [line];
+                const delIndices = [i];
+                
+                while (j < hunk.lines.length && hunk.lines[j].origin === '-') {
+                    deletions.push(hunk.lines[j]);
+                    delIndices.push(j);
+                    j++;
+                }
+                
+                const additions: any[] = [];
+                const addIndices: any[] = [];
+                while (j < hunk.lines.length && hunk.lines[j].origin === '+') {
+                    additions.push(hunk.lines[j]);
+                    addIndices.push(j);
+                    j++;
+                }
+                
+                const maxLen = Math.max(deletions.length, additions.length);
+                for (let k = 0; k < maxLen; k++) {
+                    result.push({
+                        left: k < deletions.length ? deletions[k] : null,
+                        right: k < additions.length ? additions[k] : null,
+                        leftIndex: k < deletions.length ? delIndices[k] : undefined,
+                        rightIndex: k < additions.length ? addIndices[k] : undefined
+                    });
+                }
+                 i = j;
+            } else if (line.origin === '+') {
+                 result.push({ left: null, right: line, rightIndex: i });
+                 i++;
+            } else {
+                // Safety fallback for unknown origins to prevent infinite loops
+                i++;
             }
-            
-            // Collect all consecutive + immediately following
-            const additions: any[] = [];
-            const addIndices: any[] = [];
-            while (j < hunk.lines.length && hunk.lines[j].origin === '+') {
-                additions.push(hunk.lines[j]);
-                addIndices.push(j);
-                j++;
-            }
-            
-            // Now assume they map 1-to-1 as modification, remainder is pure add/del
-            const maxLen = Math.max(deletions.length, additions.length);
-            for (let k = 0; k < maxLen; k++) {
-                rows.push({
-                    left: k < deletions.length ? deletions[k] : null,
-                    right: k < additions.length ? additions[k] : null,
-                    leftIndex: k < deletions.length ? delIndices[k] : undefined,
-                    rightIndex: k < additions.length ? addIndices[k] : undefined
-                });
-            }
-             i = j;
-        } else if (line.origin === '+') {
-            // Pure addition (not preceded by - because we handled that above)
-             rows.push({ left: null, right: line, rightIndex: i });
-             i++;
         }
-    }
+        return result;
+    }, [hunk]);
 
     return (
         <div className="flex flex-col w-full">
@@ -382,7 +347,7 @@ function SplitViewRows({ hunk, hunkIndex, selectedIndices, renderContent, onTogg
                                         {isLeftSelected && <Check className="w-2.5 h-2.5 text-primary" />}
                                     </div>
                                     <div className={cn("px-2 py-0.5 whitespace-pre-wrap break-all flex-1")}>
-                                        {renderContent(row.left.content)}
+                                        <CodeBlock content={row.left.content} language={language} style={syntaxStyle} />
                                     </div>
                                 </>
                             ) : (
@@ -405,7 +370,7 @@ function SplitViewRows({ hunk, hunkIndex, selectedIndices, renderContent, onTogg
                                         {isRightSelected && <Check className="w-2.5 h-2.5 text-primary" />}
                                     </div>
                                     <div className={cn("px-2 py-0.5 whitespace-pre-wrap break-all flex-1")}>
-                                        {renderContent(row.right.content)}
+                                        <CodeBlock content={row.right.content} language={language} style={syntaxStyle} />
                                     </div>
                                 </>
                              ) : (
