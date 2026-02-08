@@ -42,6 +42,7 @@ pub fn run() {
             abort_rebase,
             amend_rebase_commit,
             // Commit commands
+            repo::search_commits,
             stage_files,
             unstage_files,
             stage_all,

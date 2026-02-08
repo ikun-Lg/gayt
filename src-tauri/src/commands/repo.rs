@@ -319,6 +319,134 @@ fn get_commit_history_impl(repo: &Repository, skip: usize, limit: usize) -> Resu
     Ok(commits)
 }
 
+/// Search commits based on query
+#[tauri::command]
+pub async fn search_commits(
+    path: String,
+    query: crate::domain::CommitSearchQuery,
+) -> std::result::Result<Vec<CommitInfo>, String> {
+    let repo = Repository::open(&path).map_err(|e| e.to_string())?;
+    
+    // We run the search on a blocking thread because it can be CPU intensive
+    // and we don't want to block the async runtime
+    let result = std::thread::spawn(move || {
+        search_commits_impl(&repo, query)
+    }).join();
+    
+    match result {
+        Ok(res) => res.map_err(|e| e.to_string()),
+        Err(_) => Err("Search thread panicked".to_string()),
+    }
+}
+
+fn search_commits_impl(repo: &Repository, query: crate::domain::CommitSearchQuery) -> Result<Vec<CommitInfo>> {
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    
+    // Push HEAD
+    if let Ok(head) = repo.head() {
+        if let Ok(target) = head.target().ok_or(AppError::InvalidInput("No head commit".to_string())) {
+            revwalk.push(target)?;
+        }
+    }
+    
+    // Push all local branches to broaden search scope
+    if let Ok(branches) = repo.branches(Some(git2::BranchType::Local)) {
+        for branch in branches {
+            if let Ok((branch, _)) = branch {
+                if let Some(target) = branch.get().target() {
+                    revwalk.push(target)?;
+                }
+            }
+        }
+    }
+
+    let mut commits = Vec::new();
+    let limit = query.limit.unwrap_or(100);
+    
+    for oid in revwalk {
+        let oid = oid?;
+        let commit = repo.find_commit(oid)?;
+        
+        // 1. Date filter
+        let timestamp = commit.time().seconds();
+        if let Some(from) = query.date_from {
+            if timestamp < from {
+                continue;
+            }
+        }
+        if let Some(to) = query.date_to {
+            if timestamp > to {
+                continue;
+            }
+        }
+        
+        // 2. Author filter
+        let author = commit.author().name().unwrap_or("Unknown").to_string();
+        if let Some(ref author_query) = query.author {
+            if !author.to_lowercase().contains(&author_query.to_lowercase()) {
+                continue;
+            }
+        }
+        
+        // 3. Message/Query filter
+        let message = commit.message().unwrap_or("").to_string();
+        if let Some(ref q) = query.query {
+            let q_lower = q.to_lowercase();
+            // Search in message
+            let match_msg = message.to_lowercase().contains(&q_lower);
+            // Also search in author if generic query provided
+            let match_author = author.to_lowercase().contains(&q_lower);
+            // Also search in hash
+            let match_hash = oid.to_string().starts_with(&q_lower);
+            
+            if !match_msg && !match_author && !match_hash {
+                continue;
+            }
+        }
+        
+        // 4. File Path filter
+        // This is expensive as we need to diff against parent
+        if let Some(ref path_query) = query.path {
+             let tree = commit.tree()?;
+             // Check if file exists in this commit's tree
+             // This is a simple check: "Does this file exist in this snapshot?"
+             // Or "Did this commit touch this file?" -> We need to diff with parent.
+             // Usually users want "Did this commit touch this file".
+             
+             let parent = commit.parent(0).ok();
+             let parent_tree = parent.as_ref().and_then(|p| p.tree().ok());
+             
+             let mut diff_opts = git2::DiffOptions::new();
+             diff_opts.pathspec(path_query);
+             
+             let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))?;
+             if diff.deltas().len() == 0 {
+                 continue; // No changes to specified path in this commit
+             }
+        }
+        
+        let short_id = format!("{:.7}", oid);
+        let parents = commit.parent_ids().map(|id| id.to_string()).collect();
+        
+        commits.push(CommitInfo {
+            id: oid.to_string(),
+            short_id,
+            message,
+            author,
+            timestamp,
+            parents,
+            refs: Vec::new(), // optimizing: don't load refs for search results for now
+        });
+        
+        if commits.len() >= limit {
+            break;
+        }
+    }
+    
+    Ok(commits)
+}
+
 /// Get local branches for a repository
 #[tauri::command]
 pub async fn get_local_branches(path: String) -> std::result::Result<Vec<LocalBranch>, String> {

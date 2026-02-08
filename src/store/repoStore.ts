@@ -130,6 +130,12 @@ interface RepoStore {
   stageAllInternal: (path: string, record?: boolean) => Promise<void>;
   unstageAllInternal: (path: string, record?: boolean) => Promise<void>;
   commitInternal: (path: string, message: string, record?: boolean) => Promise<string>;
+
+  // Search
+  searchResults: CommitInfo[] | null;
+  isSearching: boolean;
+  searchCommits: (path: string, query: import('../types').CommitSearchQuery) => Promise<void>;
+  clearSearchResults: () => void;
 }
 
 export const useRepoStore = create<RepoStore>((set, get) => ({
@@ -799,6 +805,24 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   createTag: async (path, name, message, target) => {
     await invoke('create_tag', { path, name, message, target });
     await get().loadTags(path);
+  },
+
+  // Search
+  searchResults: null,
+  isSearching: false,
+  
+  searchCommits: async (path, query) => {
+    set({ isSearching: true, error: null });
+    try {
+        const results = await invoke<CommitInfo[]>('search_commits', { path, query });
+        set({ searchResults: results, isSearching: false });
+    } catch (e) {
+        set({ error: String(e), isSearching: false, searchResults: [] });
+    }
+  },
+
+  clearSearchResults: () => {
+    set({ searchResults: null, isSearching: false });
   },
 
   deleteTag: async (path, name) => {

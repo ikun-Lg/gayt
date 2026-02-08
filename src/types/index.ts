@@ -94,6 +94,15 @@ export interface CommitInfo {
   refs: string[];
 }
 
+export interface CommitSearchQuery {
+  query?: string;
+  author?: string;
+  dateFrom?: number;
+  dateTo?: number;
+  path?: string;
+  limit?: number;
+}
+
 export interface CommitSuggestion {
   type: CommitType;
   scope?: string;

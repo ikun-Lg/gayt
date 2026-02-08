@@ -1,12 +1,13 @@
 import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
-import { Plus, Minus, File, FilePlus, FileMinus, FileEdit, GitBranch, AlertTriangle, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Minus, File, FilePlus, FileMinus, FileEdit, GitBranch, AlertTriangle, Trash2, GripVertical, Search, X } from 'lucide-react';
 import type { FileStatus, StatusItem } from '../types';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { cn } from '../lib/utils';
+import { Input } from './ui/Input';
 
 interface FileListProps {
   repoPath: string;
@@ -87,7 +88,7 @@ function SortableFileRow({
       <div className="opacity-70 group-hover:opacity-100 transition-opacity">
         <FileIcon status={item.file.status} />
       </div>
-      <span className="flex-1 text-[13px] font-normal truncate text-foreground/90 leading-none select-none">{item.file.path}</span>
+      <span className="flex-1 text-[13px] font-normal truncate text-foreground/90 leading-none select-none" title={item.file.path}>{item.file.path}</span>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
         {onStage && stageLabel && (
           <Button
@@ -229,6 +230,7 @@ function FileIcon({ status }: { status: FileStatus }) {
 
 export function FileList({ repoPath }: FileListProps) {
   const { currentStatus, stageFile, unstageFile, discardFile, stageAll, unstageAll, selectedFile, selectFile, mergeState } = useRepoStore();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -267,7 +269,24 @@ export function FileList({ repoPath }: FileListProps) {
     }
   }
 
-  if (!currentStatus) {
+  // Filter files based on search query
+  const filteredStatus = useMemo(() => {
+    if (!currentStatus) return null;
+    if (!searchQuery.trim()) return currentStatus;
+
+    const query = searchQuery.toLowerCase();
+    const filterFn = (item: StatusItem) => item.path.toLowerCase().includes(query);
+
+    return {
+      ...currentStatus,
+      staged: currentStatus.staged.filter(filterFn),
+      unstaged: currentStatus.unstaged.filter(filterFn),
+      untracked: currentStatus.untracked.filter(filterFn),
+      conflicted: currentStatus.conflicted.filter(filterFn),
+    };
+  }, [currentStatus, searchQuery]);
+
+  if (!currentStatus || !filteredStatus) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         加载中...
@@ -281,7 +300,7 @@ export function FileList({ repoPath }: FileListProps) {
     currentStatus.untracked.length +
     currentStatus.conflicted.length;
 
-  if (totalFiles === 0) {
+  if (totalFiles === 0 && !searchQuery) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <GitBranch className="w-12 h-12 mb-4 opacity-50" />
@@ -291,87 +310,115 @@ export function FileList({ repoPath }: FileListProps) {
   }
 
   return (
-    <div className="p-6 h-full overflow-y-auto no-scrollbar bg-background selection:bg-primary/20">
-      <div className="flex items-center gap-3 mb-6">
-        <Button
-          size="sm"
-          onClick={() => stageAll(repoPath)}
-          className="rounded-xl px-4 font-bold shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-95 transition-all duration-300 btn-tactile"
-        >
-          <Plus className="w-4 h-4 mr-2 stroke-[3px]" />
-          全部暂存
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => unstageAll(repoPath)}
-          className="rounded-xl px-4 font-bold bg-muted/50 hover:bg-muted active:scale-95 transition-all duration-200 btn-tactile"
-        >
-          <Minus className="w-4 h-4 mr-2 stroke-[3px]" />
-          全部取消
-        </Button>
-      </div>
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="space-y-2">
-            <FileSection
-            title="已暂存区域"
-            files={currentStatus.staged}
-            section="staged"
-            onStageFile={() => {}}
-            onUnstageFile={(file) => unstageFile(repoPath, file)}
-            stageLabel=""
-            unstageLabel="取消暂存"
-            icon={<span className="text-[10px] font-black text-green-500">S</span>}
-            selectedFile={selectedFile}
-            onSelectFile={(file) => selectFile(repoPath, file)}
-            />
-
-            <FileSection
-            title="工作区更改"
-            files={currentStatus.unstaged}
-            section="unstaged"
-            onStageFile={(file) => stageFile(repoPath, file)}
-            onUnstageFile={() => {}}
-            onDiscardFile={(file) => discardFile(repoPath, file)}
-            stageLabel="暂存文件"
-            unstageLabel=""
-            discardLabel="放弃变更"
-            icon={<span className="text-[10px] font-black text-amber-500">M</span>}
-            selectedFile={selectedFile}
-            onSelectFile={(file) => selectFile(repoPath, file)}
-            />
-
-            <FileSection
-            title="未跟踪文件"
-            files={currentStatus.untracked}
-            section="untracked"
-            onStageFile={(file) => stageFile(repoPath, file)}
-            onUnstageFile={() => {}}
-            onDiscardFile={(file) => discardFile(repoPath, file)}
-            stageLabel="暂存文件"
-            unstageLabel=""
-            discardLabel="删除文件"
-            icon={<span className="text-[10px] font-black text-primary">U</span>}
-            selectedFile={selectedFile}
-            onSelectFile={(file) => selectFile(repoPath, file)}
-            />
+    <div className="flex flex-col h-full bg-background selection:bg-primary/20">
+      {/* Header with Actions and Search */}
+      <div className="p-4 pb-2 space-y-3">
+        <div className="flex items-center gap-3">
+            <Button
+            size="sm"
+            onClick={() => stageAll(repoPath)}
+            className="rounded-xl px-4 font-bold shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-95 transition-all duration-300 btn-tactile flex-1"
+            >
+            <Plus className="w-4 h-4 mr-2 stroke-[3px]" />
+            全部暂存
+            </Button>
+            <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => unstageAll(repoPath)}
+            className="rounded-xl px-4 font-bold bg-muted/50 hover:bg-muted active:scale-95 transition-all duration-200 btn-tactile flex-1"
+            >
+            <Minus className="w-4 h-4 mr-2 stroke-[3px]" />
+            全部取消
+            </Button>
         </div>
-      </DndContext>
 
-        {currentStatus.conflicted.length > 0 && (
-          <div className="mb-6 last:mb-0">
+        <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
+            <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索文件..."
+            className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-muted/50 focus:bg-background transition-colors rounded-lg"
+            />
+            {searchQuery && (
+            <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors"
+            >
+                <X className="w-3 h-3" />
+            </button>
+            )}
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto no-scrollbar px-6 pb-6">
+        <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+        >
+            <div className="space-y-2">
+                {(filteredStatus.staged.length > 0 || searchQuery) && (
+                  <FileSection
+                  title="已暂存区域"
+                  files={filteredStatus.staged}
+                  section="staged"
+                  onStageFile={() => {}}
+                  onUnstageFile={(file) => unstageFile(repoPath, file)}
+                  stageLabel=""
+                  unstageLabel="取消暂存"
+                  icon={<span className="text-[10px] font-black text-green-500">S</span>}
+                  selectedFile={selectedFile}
+                  onSelectFile={(file) => selectFile(repoPath, file)}
+                  />
+                )}
+
+                {(filteredStatus.unstaged.length > 0 || searchQuery) && (
+                  <FileSection
+                  title="工作区更改"
+                  files={filteredStatus.unstaged}
+                  section="unstaged"
+                  onStageFile={(file) => stageFile(repoPath, file)}
+                  onUnstageFile={() => {}}
+                  onDiscardFile={(file) => discardFile(repoPath, file)}
+                  stageLabel="暂存文件"
+                  unstageLabel=""
+                  discardLabel="放弃变更"
+                  icon={<span className="text-[10px] font-black text-amber-500">M</span>}
+                  selectedFile={selectedFile}
+                  onSelectFile={(file) => selectFile(repoPath, file)}
+                  />
+                )}
+
+                {(filteredStatus.untracked.length > 0 || searchQuery) && (
+                  <FileSection
+                  title="未跟踪文件"
+                  files={filteredStatus.untracked}
+                  section="untracked"
+                  onStageFile={(file) => stageFile(repoPath, file)}
+                  onUnstageFile={() => {}}
+                  onDiscardFile={(file) => discardFile(repoPath, file)}
+                  stageLabel="暂存文件"
+                  unstageLabel=""
+                  discardLabel="删除文件"
+                  icon={<span className="text-[10px] font-black text-primary">U</span>}
+                  selectedFile={selectedFile}
+                  onSelectFile={(file) => selectFile(repoPath, file)}
+                  />
+                )}
+            </div>
+        </DndContext>
+
+        {filteredStatus.conflicted.length > 0 && (
+          <div className="mb-6 last:mb-0 mt-6">
             <div className="flex items-center gap-2 mb-2 px-2">
               <div className="flex items-center justify-center w-5 h-5 rounded bg-destructive/10 animate-pulse">
                 <AlertTriangle className="w-3 h-3 text-destructive" />
               </div>
               <h3 className="text-[11px] font-semibold tracking-wide uppercase text-destructive">合并冲突</h3>
               <span className="text-[10px] text-destructive/60 font-mono">
-                {currentStatus.conflicted.length}
+                {filteredStatus.conflicted.length}
               </span>
               {mergeState?.isMergeInProgress && (
                 <span className="ml-auto text-[9px] text-destructive/80 bg-destructive/10 px-2 py-0.5 rounded-full">
@@ -380,7 +427,7 @@ export function FileList({ repoPath }: FileListProps) {
               )}
             </div>
             <div className="space-y-[1px] rounded-lg overflow-hidden border-2 border-destructive/30 bg-destructive/5 backdrop-blur-sm">
-              {currentStatus.conflicted.map((item, index) => (
+              {filteredStatus.conflicted.map((item, index) => (
                 <div
                   key={`${item.path}-${index}`}
                   onClick={() => selectFile(repoPath, item.path)}
@@ -402,6 +449,17 @@ export function FileList({ repoPath }: FileListProps) {
             </div>
           </div>
         )}
+        
+        {searchQuery && 
+         filteredStatus.staged.length === 0 && 
+         filteredStatus.unstaged.length === 0 && 
+         filteredStatus.untracked.length === 0 && 
+         filteredStatus.conflicted.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground/50 text-xs">
+                没有找到匹配的文件
+            </div>
+        )}
+      </div>
     </div>
   );
 }

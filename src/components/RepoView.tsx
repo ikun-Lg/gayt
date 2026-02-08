@@ -22,6 +22,8 @@ import { CommitGraph } from './CommitGraph';
 import { RemoteManagementDialog } from './RemoteManagementDialog';
 import { OperationLogPanel } from './OperationLogPanel';
 import { shortcutManager } from '../lib/shortcuts';
+import { CommitSearch } from './CommitSearch';
+import { CommitListDisplay } from './CommitListDisplay';
 import { History } from 'lucide-react';
 
 interface RepoViewProps {
@@ -611,38 +613,28 @@ export function RepoView({ repoPath }: RepoViewProps) {
                        </Button>
                      )}
                    </div>
-                   <Button
-                     size="sm"
-                     variant={showGraph ? "secondary" : "ghost"}
-                     className="h-6 gap-1.5 text-xs"
-                     onClick={() => setShowGraph(!showGraph)}
-                   >
-                     <GitGraph className="w-3.5 h-3.5" />
-                     {showGraph ? '隐藏图表' : '显示图表'}
-                   </Button>
+                   <div className="flex items-center gap-2">
+                       <CommitSearch repoPath={repoPath} />
+                       <div className="w-px h-4 bg-border/50 mx-1" />
+                       <Button
+                         size="sm"
+                         variant={showGraph ? "secondary" : "ghost"}
+                         className="h-7 gap-1.5 text-xs px-2"
+                         onClick={() => setShowGraph(!showGraph)}
+                       >
+                         <GitGraph className="w-3.5 h-3.5" />
+                         {showGraph ? '隐藏图表' : '图表'}
+                       </Button>
+                   </div>
                  </div>
 
                  <div className="flex-1 overflow-hidden relative">
-                    {showGraph && commitHistory.length > 0 && (
-                       <CommitGraph commits={commitHistory} rowHeight={56} />
-                    )}
-
-                    {commitHistory.length === 0 ? (
-                       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                          <GitGraph className="w-10 h-10 mb-3 opacity-20" />
-                          <p>暂无提交记录</p>
-                       </div>
-                    ) : (
-                       <VirtualizedCommitList
-                          commits={commitHistory}
-                          rowHeight={56}
-                          showGraph={showGraph}
-                          graphWidth={showGraph ? 80 : 0}
-                          onLoadMore={() => loadMoreCommits(repoPath)}
-                          hasMore={hasMoreCommits}
-                          isLoadingMore={isLoadingMoreCommits}
-                       />
-                    )}
+                    {/* Show search results if active, otherwise showing history */}
+                    {/* We need to differentiate between normal history and filtered results */}
+                    <CommitListDisplay 
+                        repoPath={repoPath} 
+                        showGraph={showGraph} 
+                    />
                  </div>
                </div>
             )}
