@@ -23,20 +23,10 @@ class ShortcutManager {
    * Check if event matches a shortcut config
    */
   private matches(event: KeyboardEvent, config: ShortcutConfig): boolean {
-    const key = event.key.toLowerCase();
-    const hasCtrl = config.ctrlKey ?? false;
-    const hasAlt = config.altKey ?? false;
-    const hasShift = config.shiftKey ?? false;
-    const hasMeta = config.metaKey ?? false;
-
-    return (
-      key === config.key.toLowerCase() &&
-      event.ctrlKey === hasCtrl &&
-      event.altKey === hasAlt &&
-      event.shiftKey === hasShift &&
-      event.metaKey === hasMeta
-    );
+    return isShortcutMatch(event, config);
   }
+
+
 
   /**
    * Register a new shortcut
@@ -106,6 +96,22 @@ class ShortcutManager {
   getAllShortcuts(): ShortcutConfig[] {
     return Array.from(this.shortcuts.values());
   }
+}
+
+export function isShortcutMatch(event: KeyboardEvent, config: Pick<ShortcutConfig, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>): boolean {
+    const key = event.key.toLowerCase();
+    const hasCtrl = config.ctrlKey ?? false;
+    const hasAlt = config.altKey ?? false;
+    const hasShift = config.shiftKey ?? false;
+    const hasMeta = config.metaKey ?? false;
+
+    return (
+      key === config.key.toLowerCase() &&
+      event.ctrlKey === hasCtrl &&
+      event.altKey === hasAlt &&
+      event.shiftKey === hasShift &&
+      event.metaKey === hasMeta
+    );
 }
 
 // Global singleton

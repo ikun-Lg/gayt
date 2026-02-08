@@ -5,6 +5,7 @@ import { Sparkles, Bot, X, Archive } from 'lucide-react';
 import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { cn } from '../lib/utils';
+import { isShortcutMatch } from '../lib/shortcuts';
 
 interface CommitPanelProps {
   repoPath: string | string[];
@@ -13,7 +14,7 @@ interface CommitPanelProps {
 
 export function CommitPanel({ repoPath, mode }: CommitPanelProps) {
   const { currentStatus, commit, batchCommit, generateCommitMessage, reviewCode, stashSave } = useRepoStore();
-  const { commitLanguage } = useSettingsStore();
+  const { commitLanguage, shortcuts } = useSettingsStore();
   const [message, setMessage] = useState('');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -184,8 +185,13 @@ export function CommitPanel({ repoPath, mode }: CommitPanelProps) {
               onChange={(e) => setMessage(e.target.value)}
               placeholder={getPlaceholder()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                const commitShortcut = shortcuts['commit'];
+                if (commitShortcut && isShortcutMatch(e.nativeEvent, commitShortcut)) {
+                  e.preventDefault();
                   handleCommit();
+                } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                   // Fallback to default if 'commit' shortcut is not defined (should not happen with defaults)
+                   handleCommit();
                 }
               }}
             />

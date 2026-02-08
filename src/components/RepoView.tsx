@@ -19,7 +19,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
 import { CommitGraph } from './CommitGraph';
 import { RemoteManagementDialog } from './RemoteManagementDialog';
+import { OperationLogPanel } from './OperationLogPanel';
 import { shortcutManager } from '../lib/shortcuts';
+import { History } from 'lucide-react';
 
 interface RepoViewProps {
   repoPath: string;
@@ -50,7 +52,7 @@ export function RepoView({ repoPath }: RepoViewProps) {
     rebaseState,
     getRebaseState: checkRebaseState
   } = useRepoStore();
-  const { gitUsername: savedUsername, gitPassword } = useSettingsStore();
+  const { gitUsername: savedUsername, gitPassword, shortcuts } = useSettingsStore();
 
   const repo = repositories.find((r) => r.path === repoPath);
   
@@ -63,6 +65,7 @@ export function RepoView({ repoPath }: RepoViewProps) {
   const [gitUsername, setGitUsername] = useState<string>(savedUsername || '');
   const [showGraph, setShowGraph] = useState(true); // Default to showing graph in history mode
   const [isRemoteDialogOpen, setIsRemoteDialogOpen] = useState(false);
+  const [showOperationLog, setShowOperationLog] = useState(false);
 
   // Auto-check for conflicts after pull/merge operations
   useEffect(() => {
@@ -111,46 +114,63 @@ export function RepoView({ repoPath }: RepoViewProps) {
     const stageAll = useRepoStore.getState().stageAll;
     const unstageAll = useRepoStore.getState().unstageAll;
     const stashSave = useRepoStore.getState().stashSave;
+    // shortcuts is available from component scope
 
     const unregister = shortcutManager.registerAll([
       {
-        key: 'a',
-        ctrlKey: true,
-        shiftKey: true,
+        key: shortcuts['stageAll']?.key || 'a',
+        ctrlKey: shortcuts['stageAll']?.ctrlKey,
+        shiftKey: shortcuts['stageAll']?.shiftKey,
+        altKey: shortcuts['stageAll']?.altKey,
+        metaKey: shortcuts['stageAll']?.metaKey,
         description: '全部暂存',
         enabled: () => viewMode === 'changes',
         action: () => stageAll(repoPath),
       },
       {
-        key: 'a',
-        ctrlKey: true,
-        altKey: true,
+        key: shortcuts['unstageAll']?.key || 'a',
+        ctrlKey: shortcuts['unstageAll']?.ctrlKey,
+        shiftKey: shortcuts['unstageAll']?.shiftKey,
+        altKey: shortcuts['unstageAll']?.altKey,
+        metaKey: shortcuts['unstageAll']?.metaKey,
         description: '全部取消暂存',
         enabled: () => viewMode === 'changes',
         action: () => unstageAll(repoPath),
       },
       {
-        key: 'r',
-        ctrlKey: true,
+        key: shortcuts['refresh']?.key || 'r',
+        ctrlKey: shortcuts['refresh']?.ctrlKey,
+        shiftKey: shortcuts['refresh']?.shiftKey,
+        altKey: shortcuts['refresh']?.altKey,
+        metaKey: shortcuts['refresh']?.metaKey,
         description: '刷新',
         action: () => refreshBranchInfo(repoPath),
       },
       {
-        key: 's',
-        ctrlKey: true,
+        key: shortcuts['stash']?.key || 's',
+        ctrlKey: shortcuts['stash']?.ctrlKey,
+        shiftKey: shortcuts['stash']?.shiftKey,
+        altKey: shortcuts['stash']?.altKey,
+        metaKey: shortcuts['stash']?.metaKey,
         description: '贮存',
         enabled: () => viewMode === 'changes',
         action: () => stashSave(repoPath),
       },
       {
-        key: 'h',
-        ctrlKey: true,
+        key: shortcuts['historyView']?.key || 'h',
+        ctrlKey: shortcuts['historyView']?.ctrlKey,
+        shiftKey: shortcuts['historyView']?.shiftKey,
+        altKey: shortcuts['historyView']?.altKey,
+        metaKey: shortcuts['historyView']?.metaKey,
         description: '历史视图',
         action: () => setViewMode('history'),
       },
       {
-        key: '1',
-        ctrlKey: true,
+        key: shortcuts['changesView']?.key || '1',
+        ctrlKey: shortcuts['changesView']?.ctrlKey,
+        shiftKey: shortcuts['changesView']?.shiftKey,
+        altKey: shortcuts['changesView']?.altKey,
+        metaKey: shortcuts['changesView']?.metaKey,
         description: '变更视图',
         action: () => setViewMode('changes'),
       },
@@ -162,7 +182,7 @@ export function RepoView({ repoPath }: RepoViewProps) {
     ]);
 
     return () => unregister();
-  }, [repoPath, viewMode]);
+  }, [repoPath, viewMode, useSettingsStore.getState().shortcuts]);
 
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
@@ -388,6 +408,16 @@ export function RepoView({ repoPath }: RepoViewProps) {
             >
               <Globe className="w-5 h-5" />
             </Button>
+            
+            <Button
+              size="sm"
+              variant={showOperationLog ? "secondary" : "ghost"}
+              className="h-9 w-9 p-0"
+              onClick={() => setShowOperationLog(!showOperationLog)}
+              title="操作历史 (Undo/Redo)"
+            >
+              <History className="w-5 h-5" />
+            </Button>
            </div>
         </div>
         
@@ -506,145 +536,154 @@ export function RepoView({ repoPath }: RepoViewProps) {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 min-h-0 overflow-hidden relative">
+      <div className="flex-1 min-h-0 overflow-hidden relative flex">
         
-        {/* Changes View */}
-        {viewMode === 'changes' && (
-            <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex-1 flex min-h-0">
-                {/* Left side: File List */}
-                <div className={cn(
-                  "flex flex-col flex-1 min-w-0 transition-all duration-300",
-                  selectedFile ? "w-1/3" : "w-full"
-                )}>
-                  {/* File status summary */}
-                  {(currentStatus && (currentStatus.staged.length > 0 || currentStatus.unstaged.length > 0 || currentStatus.untracked.length > 0)) && (
-                    <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 text-amber-500" />
-                          <span className="text-sm font-medium">未提交的修改</span>
-                          <Badge variant="secondary" className="lc-badge">
-                            {(currentStatus.staged.length || 0) + (currentStatus.unstaged.length || 0) + (currentStatus.untracked.length || 0)}
-                          </Badge>
+        <div className="flex-1 relative flex flex-col min-w-0">
+            {/* Changes View */}
+            {viewMode === 'changes' && (
+                <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex-1 flex min-h-0">
+                    {/* Left side: File List */}
+                    <div className={cn(
+                      "flex flex-col flex-1 min-w-0 transition-all duration-300",
+                      selectedFile ? "w-1/3" : "w-full"
+                    )}>
+                      {/* File status summary */}
+                      {(currentStatus && (currentStatus.staged.length > 0 || currentStatus.unstaged.length > 0 || currentStatus.untracked.length > 0)) && (
+                        <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-500" />
+                              <span className="text-sm font-medium">未提交的修改</span>
+                              <Badge variant="secondary" className="lc-badge">
+                                {(currentStatus.staged.length || 0) + (currentStatus.unstaged.length || 0) + (currentStatus.untracked.length || 0)}
+                              </Badge>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
+                        <FileList repoPath={repoPath} />
                       </div>
                     </div>
-                  )}
+
+                    {/* Right side: Diff View */}
+                    {selectedFile && (
+                      <div className="w-2/3 border-l border-border/40 animate-in slide-in-from-right duration-300">
+                        <DiffView 
+                          repoPath={repoPath}
+                          filename={selectedFile} 
+                          diff={selectedFileDiff} 
+                          onClose={() => selectFile(repoPath, null)} 
+                        />
+                      </div>
+                    )}
+                  </div>
                   
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
-                    <FileList repoPath={repoPath} />
+                  <div className="shrink-0 z-20">
+                    <CommitPanel repoPath={repoPath} mode="single" />
                   </div>
                 </div>
+            )}
 
-                {/* Right side: Diff View */}
-                {selectedFile && (
-                  <div className="w-2/3 border-l border-border/40 animate-in slide-in-from-right duration-300">
-                    <DiffView 
-                      repoPath={repoPath}
-                      filename={selectedFile} 
-                      diff={selectedFileDiff} 
-                      onClose={() => selectFile(repoPath, null)} 
-                    />
-                  </div>
-                )}
-              </div>
-              
-              <div className="shrink-0 z-20">
-                <CommitPanel repoPath={repoPath} mode="single" />
-              </div>
-            </div>
-        )}
-
-        {/* History View */}
-        {viewMode === 'history' && (
-           <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
-             <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
-               <div className="flex items-center gap-3">
-                 <div className="text-sm font-medium text-muted-foreground">提交历史</div>
-                 {commitHistory.length > 1 && (
-                   <Button
-                     variant="outline"
-                     className="h-6 gap-1.5 text-xs text-purple-600 border-purple-500/30 hover:bg-purple-500/5"
-                     onClick={() => setViewMode('rebase')}
-                   >
-                     <GitBranch className="w-3.5 h-3.5" />
-                     交互式 Rebase
-                   </Button>
-                 )}
-               </div>
-               <Button
-                 size="sm"
-                 variant={showGraph ? "secondary" : "ghost"}
-                 className="h-6 gap-1.5 text-xs"
-                 onClick={() => setShowGraph(!showGraph)}
-               >
-                 <GitGraph className="w-3.5 h-3.5" />
-                 {showGraph ? '隐藏图表' : '显示图表'}
-               </Button>
-             </div>
-
-             <div className="flex-1 overflow-hidden relative">
-                {showGraph && commitHistory.length > 0 && (
-                   <CommitGraph commits={commitHistory} rowHeight={56} />
-                )}
-
-                {commitHistory.length === 0 ? (
-                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <GitGraph className="w-10 h-10 mb-3 opacity-20" />
-                      <p>暂无提交记录</p>
+            {/* History View */}
+            {viewMode === 'history' && (
+               <div className="absolute inset-0 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                 <div className="shrink-0 border-b bg-muted/30 px-4 py-2 flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <div className="text-sm font-medium text-muted-foreground">提交历史</div>
+                     {commitHistory.length > 1 && (
+                       <Button
+                         variant="outline"
+                         className="h-6 gap-1.5 text-xs text-purple-600 border-purple-500/30 hover:bg-purple-500/5"
+                         onClick={() => setViewMode('rebase')}
+                       >
+                         <GitBranch className="w-3.5 h-3.5" />
+                         交互式 Rebase
+                       </Button>
+                     )}
                    </div>
-                ) : (
-                   <VirtualizedCommitList
-                      commits={commitHistory}
-                      rowHeight={56}
-                      showGraph={showGraph}
-                      graphWidth={showGraph ? 80 : 0}
-                      onLoadMore={() => loadMoreCommits(repoPath)}
-                      hasMore={hasMoreCommits}
-                      isLoadingMore={isLoadingMoreCommits}
-                   />
-                )}
-             </div>
-           </div>
-        )}
+                   <Button
+                     size="sm"
+                     variant={showGraph ? "secondary" : "ghost"}
+                     className="h-6 gap-1.5 text-xs"
+                     onClick={() => setShowGraph(!showGraph)}
+                   >
+                     <GitGraph className="w-3.5 h-3.5" />
+                     {showGraph ? '隐藏图表' : '显示图表'}
+                   </Button>
+                 </div>
 
-        {/* Stashes View */}
-        {viewMode === 'stashes' && (
-           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
-             <StashPanel />
-           </div>
-        )}
+                 <div className="flex-1 overflow-hidden relative">
+                    {showGraph && commitHistory.length > 0 && (
+                       <CommitGraph commits={commitHistory} rowHeight={56} />
+                    )}
 
-        {/* Tags View */}
-        {viewMode === 'tags' && (
-           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
-             <TagList />
-           </div>
-        )}
+                    {commitHistory.length === 0 ? (
+                       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                          <GitGraph className="w-10 h-10 mb-3 opacity-20" />
+                          <p>暂无提交记录</p>
+                       </div>
+                    ) : (
+                       <VirtualizedCommitList
+                          commits={commitHistory}
+                          rowHeight={56}
+                          showGraph={showGraph}
+                          graphWidth={showGraph ? 80 : 0}
+                          onLoadMore={() => loadMoreCommits(repoPath)}
+                          hasMore={hasMoreCommits}
+                          isLoadingMore={isLoadingMoreCommits}
+                       />
+                    )}
+                 </div>
+               </div>
+            )}
 
-        {/* Conflicts View */}
-        {viewMode === 'conflicts' && (
-           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
-             <ConflictPanel repoPath={repoPath} onResolve={() => {
-               setViewMode('changes');
-             }} />
-           </div>
-        )}
+            {/* Stashes View */}
+            {viewMode === 'stashes' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <StashPanel />
+               </div>
+            )}
 
-        {/* Rebase View */}
-        {viewMode === 'rebase' && (
-           <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
-             <RebasePanel
-               repoPath={repoPath}
-               commits={commitHistory}
-               onClose={() => {
-                 setViewMode('history');
-               }}
-               onComplete={() => {
-                 setViewMode('history');
-                 loadCommitHistory(repoPath);
-               }}
-             />
-           </div>
+            {/* Tags View */}
+            {viewMode === 'tags' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <TagList />
+               </div>
+            )}
+
+            {/* Conflicts View */}
+            {viewMode === 'conflicts' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <ConflictPanel repoPath={repoPath} onResolve={() => {
+                   setViewMode('changes');
+                 }} />
+               </div>
+            )}
+
+            {/* Rebase View */}
+            {viewMode === 'rebase' && (
+               <div className="absolute inset-0 animate-in fade-in zoom-in-95 duration-200">
+                 <RebasePanel
+                   repoPath={repoPath}
+                   commits={commitHistory}
+                   onClose={() => {
+                     setViewMode('history');
+                   }}
+                   onComplete={() => {
+                     setViewMode('history');
+                     loadCommitHistory(repoPath);
+                   }}
+                 />
+               </div>
+            )}
+        </div>
+
+        {/* Operation Log Panel */}
+        {showOperationLog && (
+            <div className="shrink-0 h-full border-l border-border/40 bg-background/95 backdrop-blur z-20">
+                <OperationLogPanel repoPath={repoPath} onClose={() => setShowOperationLog(false)} />
+            </div>
         )}
 
       </div>

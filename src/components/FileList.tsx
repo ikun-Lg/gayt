@@ -2,9 +2,11 @@ import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
 import { Plus, Minus, File, FilePlus, FileMinus, FileEdit, GitBranch, AlertTriangle, Trash2, GripVertical } from 'lucide-react';
 import type { FileStatus, StatusItem } from '../types';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import React from 'react';
+import { cn } from '../lib/utils';
 
 interface FileListProps {
   repoPath: string;
@@ -52,25 +54,30 @@ function SortableFileRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
+    data: item,
   });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-3 px-3 py-2 hover:bg-accent/10 active:bg-accent/20 transition-colors duration-100 cursor-default ${
-        isSelected ? 'bg-accent/20' : ''
-      }`}
+      className={cn(
+        "group flex items-center gap-3 px-3 py-2 hover:bg-accent/10 active:bg-accent/20 transition-colors duration-100 cursor-default",
+        isSelected && "bg-accent/20",
+        isDragging && "bg-accent/10 ring-2 ring-primary/20 rounded-lg"
+      )}
+      onClick={() => !isDragging /* Prevent click when dragging */}
     >
       {/* Drag handle */}
       <button
-        className="opacity-0 group-hover:opacity-30 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+        className="opacity-0 group-hover:opacity-30 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 -ml-1"
         {...attributes}
         {...listeners}
       >
@@ -80,7 +87,7 @@ function SortableFileRow({
       <div className="opacity-70 group-hover:opacity-100 transition-opacity">
         <FileIcon status={item.file.status} />
       </div>
-      <span className="flex-1 text-[13px] font-normal truncate text-foreground/90 leading-none">{item.file.path}</span>
+      <span className="flex-1 text-[13px] font-normal truncate text-foreground/90 leading-none select-none">{item.file.path}</span>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
         {onStage && stageLabel && (
           <Button
@@ -132,34 +139,17 @@ function FileSection({
   discardLabel,
   icon,
   selectedFile,
+  onSelectFile,
 }: FileSectionProps) {
-  const [items, setItems] = React.useState<SortableFileItem[]>(
-    files.map((file) => ({ id: `${section}-${file.path}`, file, section }))
+  const items: SortableFileItem[] = React.useMemo(() => 
+    files.map((file) => ({ id: `${section}-${file.path}`, file, section })),
+    [files, section]
   );
 
-  React.useEffect(() => {
-    setItems(files.map((file) => ({ id: `${section}-${file.path}`, file, section })));
-  }, [files, section]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setItems((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  }
-
-  if (items.length === 0) return null;
+  const { setNodeRef, isOver } = useDroppable({
+    id: `section-${section}`,
+    data: { section },
+  });
 
   return (
     <div className="mb-6 last:mb-0">
@@ -172,41 +162,48 @@ function FileSection({
           {items.length}
         </span>
       </div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
+      
+      <div 
+        ref={setNodeRef}
+        className={cn(
+           "space-y-[1px] rounded-lg overflow-hidden border border-border/50 bg-card/40 backdrop-blur-sm min-h-[40px] transition-colors",
+           isOver && "bg-primary/5 border-primary/30 ring-1 ring-primary/20"
+        )}
       >
         <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-[1px] rounded-lg overflow-hidden border border-border/50 bg-card/40 backdrop-blur-sm">
+            {items.length === 0 && (
+                <div className="p-4 flex items-center justify-center text-[10px] text-muted-foreground/40 italic select-none">
+                    拖拽文件到这里
+                </div>
+            )}
             {items.map((item) => (
-              <SortableFileRow
-                key={item.id}
-                item={item}
-                isSelected={selectedFile === item.file.path}
-                onStage={
-                  section !== 'staged'
-                    ? () => onStageFile(item.file.path)
-                    : undefined
-                }
-                onUnstage={
-                  section === 'staged'
-                    ? () => onUnstageFile(item.file.path)
-                    : undefined
-                }
-                onDiscard={
-                  section !== 'staged' && onDiscardFile
-                    ? () => onDiscardFile(item.file.path)
-                    : undefined
-                }
-                stageLabel={stageLabel}
-                unstageLabel={unstageLabel}
-                discardLabel={discardLabel}
-              />
+              <div key={item.id} onClick={() => onSelectFile(item.file.path)}>
+                <SortableFileRow
+                    item={item}
+                    isSelected={selectedFile === item.file.path}
+                    onStage={
+                    section !== 'staged'
+                        ? () => onStageFile(item.file.path)
+                        : undefined
+                    }
+                    onUnstage={
+                    section === 'staged'
+                        ? () => onUnstageFile(item.file.path)
+                        : undefined
+                    }
+                    onDiscard={
+                    section !== 'staged' && onDiscardFile
+                        ? () => onDiscardFile(item.file.path)
+                        : undefined
+                    }
+                    stageLabel={stageLabel}
+                    unstageLabel={unstageLabel}
+                    discardLabel={discardLabel}
+                />
+              </div>
             ))}
-          </div>
         </SortableContext>
-      </DndContext>
+      </div>
     </div>
   );
 }
@@ -230,10 +227,45 @@ function FileIcon({ status }: { status: FileStatus }) {
   }
 }
 
-import React from 'react';
-
 export function FileList({ repoPath }: FileListProps) {
   const { currentStatus, stageFile, unstageFile, discardFile, stageAll, unstageAll, selectedFile, selectFile, mergeState } = useRepoStore();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+        activationConstraint: {
+            distance: 5,
+        },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    // active.data.current.section is source
+    // over.data.current.section is target
+    const sourceData = active.data.current as SortableFileItem | undefined;
+    const targetData = over.data.current as { section: 'staged' | 'unstaged' | 'untracked' } | undefined;
+
+    if (!sourceData || !targetData) return;
+
+    const sourceSection = sourceData.section;
+    const targetSection = targetData.section;
+
+    if (sourceSection === targetSection) return;
+
+    const filePath = sourceData.file.path;
+
+    if (targetSection === 'staged') {
+        stageFile(repoPath, filePath);
+    } else {
+        // Moving to unstaged or untracked means unstaging
+        unstageFile(repoPath, filePath);
+    }
+  }
 
   if (!currentStatus) {
     return (
@@ -280,49 +312,56 @@ export function FileList({ repoPath }: FileListProps) {
         </Button>
       </div>
 
-      <div className="space-y-2">
-        <FileSection
-          title="已暂存区域"
-          files={currentStatus.staged}
-          section="staged"
-          onStageFile={() => {}}
-          onUnstageFile={(file) => unstageFile(repoPath, file)}
-          stageLabel=""
-          unstageLabel="取消暂存"
-          icon={<span className="text-[10px] font-black text-green-500">S</span>}
-          selectedFile={selectedFile}
-          onSelectFile={(file) => selectFile(repoPath, file)}
-        />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="space-y-2">
+            <FileSection
+            title="已暂存区域"
+            files={currentStatus.staged}
+            section="staged"
+            onStageFile={() => {}}
+            onUnstageFile={(file) => unstageFile(repoPath, file)}
+            stageLabel=""
+            unstageLabel="取消暂存"
+            icon={<span className="text-[10px] font-black text-green-500">S</span>}
+            selectedFile={selectedFile}
+            onSelectFile={(file) => selectFile(repoPath, file)}
+            />
 
-        <FileSection
-          title="工作区更改"
-          files={currentStatus.unstaged}
-          section="unstaged"
-          onStageFile={(file) => stageFile(repoPath, file)}
-          onUnstageFile={() => {}}
-          onDiscardFile={(file) => discardFile(repoPath, file)}
-          stageLabel="暂存文件"
-          unstageLabel=""
-          discardLabel="放弃变更"
-          icon={<span className="text-[10px] font-black text-amber-500">M</span>}
-          selectedFile={selectedFile}
-          onSelectFile={(file) => selectFile(repoPath, file)}
-        />
+            <FileSection
+            title="工作区更改"
+            files={currentStatus.unstaged}
+            section="unstaged"
+            onStageFile={(file) => stageFile(repoPath, file)}
+            onUnstageFile={() => {}}
+            onDiscardFile={(file) => discardFile(repoPath, file)}
+            stageLabel="暂存文件"
+            unstageLabel=""
+            discardLabel="放弃变更"
+            icon={<span className="text-[10px] font-black text-amber-500">M</span>}
+            selectedFile={selectedFile}
+            onSelectFile={(file) => selectFile(repoPath, file)}
+            />
 
-        <FileSection
-          title="未跟踪文件"
-          files={currentStatus.untracked}
-          section="untracked"
-          onStageFile={(file) => stageFile(repoPath, file)}
-          onUnstageFile={() => {}}
-          onDiscardFile={(file) => discardFile(repoPath, file)}
-          stageLabel="暂存文件"
-          unstageLabel=""
-          discardLabel="删除文件"
-          icon={<span className="text-[10px] font-black text-blue-500">U</span>}
-          selectedFile={selectedFile}
-          onSelectFile={(file) => selectFile(repoPath, file)}
-        />
+            <FileSection
+            title="未跟踪文件"
+            files={currentStatus.untracked}
+            section="untracked"
+            onStageFile={(file) => stageFile(repoPath, file)}
+            onUnstageFile={() => {}}
+            onDiscardFile={(file) => discardFile(repoPath, file)}
+            stageLabel="暂存文件"
+            unstageLabel=""
+            discardLabel="删除文件"
+            icon={<span className="text-[10px] font-black text-blue-500">U</span>}
+            selectedFile={selectedFile}
+            onSelectFile={(file) => selectFile(repoPath, file)}
+            />
+        </div>
+      </DndContext>
 
         {currentStatus.conflicted.length > 0 && (
           <div className="mb-6 last:mb-0">
@@ -363,7 +402,6 @@ export function FileList({ repoPath }: FileListProps) {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

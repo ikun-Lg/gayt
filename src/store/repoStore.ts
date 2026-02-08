@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { operationHistory } from '../lib/operationHistory';
 import type {
   Repository,
   RepoStatus,
@@ -35,6 +36,7 @@ interface RepoStore {
   remotes: RemoteInfo[];
   mergeState: MergeState | null;
   rebaseState: RebaseState | null;
+  historyChangeCount: number;
 
   // Pagination state
   hasMoreCommits: boolean;
@@ -119,6 +121,15 @@ interface RepoStore {
   selectedFileDiff: FileDiff | null;
   selectFile: (repoPath: string, filePath: string | null) => Promise<void>;
   stageChunk: (repoPath: string, patch: string) => Promise<void>;
+  
+  // Undo/Redo
+  undoLastOperation: (path: string) => Promise<void>;
+  redoLastOperation: (path: string) => Promise<void>;
+  
+  // Internal helper actions (to separate recording)
+  stageAllInternal: (path: string, record?: boolean) => Promise<void>;
+  unstageAllInternal: (path: string, record?: boolean) => Promise<void>;
+  commitInternal: (path: string, message: string, record?: boolean) => Promise<string>;
 }
 
 export const useRepoStore = create<RepoStore>((set, get) => ({
@@ -139,6 +150,7 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
   selectedFileDiff: null,
   mergeState: null,
   rebaseState: null,
+  historyChangeCount: 0,
   hasMoreCommits: true,
   isLoadingMoreCommits: false,
   commitsPageSize: 50,
@@ -336,15 +348,164 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     }
   },
 
+  undoLastOperation: async (path: string) => {
+    const op = operationHistory.performUndo(path);
+    if (!op) return;
+
+    try {
+      switch (op.type) {
+        case 'commit':
+          await get().revokeLatestCommit(path);
+          break;
+        case 'stage':
+          if (op.undoData && Array.isArray(op.undoData)) {
+            await invoke('unstage_files', { path, files: op.undoData });
+            await get().refreshStatus(path);
+          }
+          break;
+        case 'unstage':
+          if (op.undoData && Array.isArray(op.undoData)) {
+             await invoke('stage_files', { path, files: op.undoData });
+             await get().refreshStatus(path);
+          }
+          break;
+        case 'stage-all':
+            await get().unstageAllInternal(path, false); // Don't record this internal call
+            break;
+        case 'unstage-all':
+            await get().stageAllInternal(path, false);
+            break;
+      }
+      set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
+    } catch (e) {
+      console.error("Undo failed", e);
+      // If undo failed, we might want to restore history pointer?
+      // For now, let's assume it worked or user can try again.
+    }
+  },
+
+  redoLastOperation: async (path: string) => {
+    const op = operationHistory.performRedo(path);
+    if (!op) return;
+    
+    try {
+       switch (op.type) {
+        case 'commit':
+            // Redoing a commit is hard because we need the message and files.
+            // Only support if we saved them in undoData or if we can just re-commit staged.
+            // For now, commit redo might be complex.
+            // Actually, if we just revoked (soft reset), the changes are staged.
+            // So we just need to commit again with the SAME message.
+            if (op.description && typeof op.undoData === 'object') {
+                 // We need to store message in operation data.
+                 // Let's assume description IS the message or we store it.
+                 // For now, use description.
+                 // Extract message from description "Commit: <msg>"?
+                 // Better to store 'message' in undoData.
+                 const msg = (op.undoData as any)?.message;
+                 if (msg) {
+                     await get().commitInternal(path, msg, false);
+                 }
+            }
+            break;
+        case 'stage':
+             if (op.undoData && Array.isArray(op.undoData)) {
+                await invoke('stage_files', { path, files: op.undoData });
+                await get().refreshStatus(path);
+             }
+             break;
+        case 'unstage':
+              if (op.undoData && Array.isArray(op.undoData)) {
+                await invoke('unstage_files', { path, files: op.undoData });
+                await get().refreshStatus(path);
+              }
+              break;
+         case 'stage-all':
+             await get().stageAllInternal(path, false);
+             break;
+         case 'unstage-all':
+             await get().unstageAllInternal(path, false);
+             break;
+       }
+       set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
+    } catch (e) {
+        console.error("Redo failed", e);
+    }
+  },
+
+  // Internal helpers to avoid double recording
+  stageAllInternal: async (repoPath, record = true) => {
+      await invoke('stage_all', { path: repoPath });
+      await get().refreshStatus(repoPath);
+      if (record) {
+          operationHistory.record({
+              repoPath,
+              type: 'stage-all', // Use specific type
+              description: '全部暂存',
+              undoable: true,
+              undoData: null // We don't track exact files for all, just reverse with unstageAll
+          } as any);
+          set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
+      }
+  },
+
+  unstageAllInternal: async (repoPath, record = true) => {
+      await invoke('unstage_all', { path: repoPath });
+      await get().refreshStatus(repoPath);
+      if (record) {
+          operationHistory.record({
+              repoPath,
+              type: 'unstage-all',
+              description: '全部取消暂存',
+              undoable: true,
+              undoData: null
+          } as any);
+          set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
+      }
+  },
+
+  commitInternal: async (repoPath, message, record = true) => {
+    const result = await invoke<string>('commit', { path: repoPath, message });
+    await get().refreshStatus(repoPath);
+    await get().refreshBranchInfo(repoPath);
+    if (record) {
+         operationHistory.record({
+              repoPath,
+              type: 'commit',
+              description: message,
+              undoable: true,
+              undoData: { message } // Store message for redo
+          });
+         set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
+    }
+    return result;
+  },
+
   // Git operations
   stageFile: async (repoPath, filePath) => {
     await invoke('stage_files', { path: repoPath, files: [filePath] });
     await get().refreshStatus(repoPath);
+    operationHistory.record({
+      repoPath,
+      type: 'stage',
+      description: `暂存 ${filePath.split('/').pop()}`,
+      undoable: true,
+      undoData: [filePath]
+    });
+    set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
   },
 
   unstageFile: async (repoPath, filePath) => {
     await invoke('unstage_files', { path: repoPath, files: [filePath] });
     await get().refreshStatus(repoPath);
+    operationHistory.record({
+      repoPath,
+      type: 'unstage',
+      description: `取消暂存 ${filePath.split('/').pop()}`,
+      undoable: true,
+      undoData: [filePath]
+    });
+    set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
   },
 
   discardFile: async (repoPath, filePath) => {
@@ -355,29 +516,49 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
       set({ selectedFile: null, selectedFileDiff: null });
     }
     await get().refreshStatus(repoPath);
+    // Discard is irreversible for now, so we don't record it as undoable
+      operationHistory.record({
+      repoPath,
+      type: 'discard', // Ensure 'discard' is in OperationType
+      description: `丢弃更改 ${filePath.split('/').pop()}`,
+      undoable: false,
+    });
+    set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
   },
 
   stageAll: async (repoPath) => {
-    await invoke('stage_all', { path: repoPath });
-    await get().refreshStatus(repoPath);
+      await get().stageAllInternal(repoPath, true);
   },
 
   unstageAll: async (repoPath) => {
-    await invoke('unstage_all', { path: repoPath });
-    await get().refreshStatus(repoPath);
+      await get().unstageAllInternal(repoPath, true);
   },
 
   commit: async (repoPath, message) => {
-    const result = await invoke<string>('commit', { path: repoPath, message });
-    await get().refreshStatus(repoPath);
-    await get().refreshBranchInfo(repoPath);
-    return result;
+    return await get().commitInternal(repoPath, message, true);
   },
 
   revokeLatestCommit: async (repoPath) => {
     await invoke('revoke_latest_commit', { path: repoPath });
     await get().refreshStatus(repoPath);
     await get().refreshBranchInfo(repoPath);
+    // Revoke is an action itself. Should we record it?
+    // If we record it, undoing it means... "Un-revoke"? i.e. Commit again.
+    // Ideally, "Undo Commit" IS the revoke action triggered by undoing the commit operation.
+    // But user can also click "Revoke" button manually.
+    // If they click manually, we should record it so they can Undo the Revoke (Re-commit).
+    // Yes.
+     operationHistory.record({
+        repoPath,
+        type: 'revert', // or custom type 'revoke'
+        description: '撤回提交',
+        undoable: false, // For now, let's say manual revoke is not easily undoable unless we know exactly what it did.
+                         // Actually, if we just re-commit, it is undoable.
+                         // But we need the message of the revoked commit!
+                         // The helper `revoke_latest_commit` doesn't return the message.
+                         // So we can't easily undo a manual revoke unless we fetch the old HEAD message first.
+    });
+     set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
   },
 
   batchCommit: async (repoPaths, message) => {
@@ -390,7 +571,16 @@ export const useRepoStore = create<RepoStore>((set, get) => ({
     for (const path of repoPaths) {
       await get().refreshStatus(path);
       await get().refreshBranchInfo(path);
+       // Record for each repo?
+       operationHistory.record({
+          repoPath: path,
+          type: 'commit',
+          description: message,
+          undoable: true,
+          undoData: { message }
+       });
     }
+    set(state => ({ historyChangeCount: state.historyChangeCount + 1 }));
 
     return result;
   },

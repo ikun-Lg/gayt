@@ -2,24 +2,27 @@ import { useSettingsStore } from '../store/settingsStore';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
-import { X, Key, GitBranch, Settings as SettingsIcon } from 'lucide-react';
+import { X, Key, GitBranch, Settings as SettingsIcon, Keyboard } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { ShortcutConfigPanel } from './ShortcutConfigPanel';
 
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type Tab = 'general' | 'ai' | 'git';
+type Tab = 'general' | 'ai' | 'git' | 'shortcuts';
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'general', label: '通用', icon: <SettingsIcon className="w-4 h-4" /> },
+  { id: 'shortcuts', label: '快捷键', icon: <Keyboard className="w-4 h-4" /> },
   { id: 'ai', label: 'AI 设置', icon: <Key className="w-4 h-4" /> },
   { id: 'git', label: 'Git 凭据', icon: <GitBranch className="w-4 h-4" /> },
 ];
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
+  // ... (existing store hooks)
   const {
     workDir,
     aiProvider,
@@ -41,10 +44,12 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   } = useSettingsStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  // ... (existing local state)
   const [localUsername, setLocalUsername] = useState(savedGitUsername || '');
   const [localPassword, setLocalPassword] = useState(savedGitPassword || '');
   const [isLoadingUsername, setIsLoadingUsername] = useState(true);
 
+  // ... (existing effects)
   // Load git username from global config only if not already set
   useEffect(() => {
     if (!savedGitUsername) {
@@ -119,6 +124,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
           <div className="flex-1 p-6 overflow-y-auto">
             {/* General Settings */}
             {activeTab === 'general' && (
+               // ... existing general settings content
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold">通用设置</h3>
 
@@ -191,6 +197,11 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </div>
                 )}
               </div>
+            )}
+            
+            {/* Shortcuts Settings */}
+            {activeTab === 'shortcuts' && (
+              <ShortcutConfigPanel />
             )}
 
             {/* AI Settings */}
@@ -271,6 +282,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
             {/* Git Credentials */}
             {activeTab === 'git' && (
+               // ... existing git credentials content
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold">Git 凭据</h3>
 

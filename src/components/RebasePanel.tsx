@@ -1,10 +1,13 @@
 import { useRepoStore } from '../store/repoStore';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
-import { GitBranch, Play, SkipForward, X, Edit2, Trash2, Check, Loader2 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { GitBranch, Play, SkipForward, X, Edit2, Trash2, Check, Loader2, GripVertical } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import type { RebaseTodo, RebaseCommand, CommitInfo } from '../types';
 import { cn } from '../lib/utils';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface RebasePanelProps {
   repoPath: string;
@@ -31,13 +34,126 @@ const COMMAND_COLORS: Record<RebaseCommand, string> = {
   drop: 'text-red-600 bg-red-50 dark:bg-red-950/20',
 };
 
+interface SortableTodoItemProps {
+  todo: RebaseTodo;
+  index: number;
+  isRebaseInProgress: boolean | undefined;
+  cycleCommand: (id: string) => void;
+  removeTodo: (id: string) => void;
+  setEditMessage: (data: { id: string; message: string }) => void;
+}
+
+function SortableTodoItem({ todo, index, isRebaseInProgress, cycleCommand, removeTodo, setEditMessage }: SortableTodoItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: todo.id,
+    disabled: !!isRebaseInProgress,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group flex items-center gap-3 p-3 rounded-lg border transition-all",
+        "bg-card/30 border-border/40 hover:border-border/60",
+        todo.command === 'drop' && "opacity-50",
+        isDragging && "bg-accent/10 ring-2 ring-primary/20",
+        !isRebaseInProgress && "cursor-default" // Item itself not draggable, handle is
+      )}
+    >
+      {/* Drag handle */}
+      <div
+        className={cn(
+          "flex items-center justify-center w-6 h-6 rounded text-xs font-bold -ml-1",
+          !isRebaseInProgress ? "text-muted-foreground cursor-grab active:cursor-grabbing hover:bg-muted/50" : "text-muted-foreground/50 cursor-not-allowed"
+        )}
+        {...attributes}
+        {...listeners}
+      >
+        {!isRebaseInProgress ? <GripVertical className="w-3.5 h-3.5" /> : <span className="text-[10px]">{index + 1}</span>}
+      </div>
+
+      {/* Command badge */}
+      <button
+        onClick={() => !isRebaseInProgress && cycleCommand(todo.id)}
+        disabled={isRebaseInProgress}
+        className={cn(
+          "px-2 py-1 rounded text-xs font-semibold cursor-pointer transition-all",
+          COMMAND_COLORS[todo.command],
+          !isRebaseInProgress && "hover:scale-105"
+        )}
+      >
+        {COMMAND_LABELS[todo.command]}
+      </button>
+
+      {/* Commit info */}
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-foreground truncate">
+          {todo.commit.message.split('\n')[0]}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {todo.commit.shortId}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {todo.commit.author}
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      {!isRebaseInProgress && (
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {todo.command === 'reword' && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => setEditMessage({ id: todo.id, message: todo.commit.message })}
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+          {todo.command !== 'drop' && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-red-500 hover:text-red-600"
+              onClick={() => removeTodo(todo.id)}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RebasePanel({ repoPath, commits, onClose, onComplete }: RebasePanelProps) {
   const { rebaseState, startInteractiveRebase, continueRebase, skipRebase, abortRebase, amendRebaseCommit, getRebaseState } = useRepoStore();
   const [todos, setTodos] = useState<RebaseTodo[]>([]);
   const [baseCommit, setBaseCommit] = useState<string>('');
   const [isRebasing, setIsRebasing] = useState(false);
   const [editMessage, setEditMessage] = useState<{ id: string; message: string } | null>(null);
-  const dragStartIndex = useRef<number | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+        activationConstraint: {
+            distance: 5,
+        },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     // Initialize todos from commits
@@ -151,25 +267,15 @@ export function RebasePanel({ repoPath, commits, onClose, onComplete }: RebasePa
     setTodos(todos.map(t => t.id === id ? { ...t, command: 'drop' } : t));
   };
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    dragStartIndex.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    if (dragStartIndex.current === null || dragStartIndex.current === dropIndex) return;
-
-    const newTodos = [...todos];
-    const [removed] = newTodos.splice(dragStartIndex.current, 1);
-    newTodos.splice(dropIndex, 0, removed);
-    setTodos(newTodos);
-    dragStartIndex.current = null;
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setTodos((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const activeTodos = todos.filter(t => t.command !== 'drop');
@@ -262,85 +368,27 @@ export function RebasePanel({ repoPath, commits, onClose, onComplete }: RebasePa
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        <div className="max-w-3xl mx-auto space-y-2">
-          {todos.map((todo, index) => (
-            <div
-              key={todo.id}
-              draggable={!rebaseState?.isRebaseInProgress}
-              onDragStart={(e) => handleDragStart(e, index)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, index)}
-              className={cn(
-                "group flex items-center gap-3 p-3 rounded-lg border transition-all",
-                "bg-card/30 border-border/40 hover:border-border/60",
-                todo.command === 'drop' && "opacity-50",
-                !rebaseState?.isRebaseInProgress && "cursor-move"
-              )}
-            >
-              {/* Drag handle */}
-              <div className={cn(
-                "flex items-center justify-center w-6 h-6 rounded text-xs font-bold",
-                !rebaseState?.isRebaseInProgress ? "text-muted-foreground cursor-grab" : "text-muted-foreground/50"
-              )}>
-                {index + 1}
-              </div>
-
-              {/* Command badge */}
-              <button
-                onClick={() => !rebaseState?.isRebaseInProgress && cycleCommand(todo.id)}
-                disabled={rebaseState?.isRebaseInProgress}
-                className={cn(
-                  "px-2 py-1 rounded text-xs font-semibold cursor-pointer transition-all",
-                  COMMAND_COLORS[todo.command],
-                  !rebaseState?.isRebaseInProgress && "hover:scale-105"
-                )}
-              >
-                {COMMAND_LABELS[todo.command]}
-              </button>
-
-              {/* Commit info */}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">
-                  {todo.commit.message.split('\n')[0]}
+        <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+        >
+            <SortableContext items={todos.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                <div className="max-w-3xl mx-auto space-y-2">
+                {todos.map((todo, index) => (
+                    <SortableTodoItem
+                        key={todo.id}
+                        todo={todo}
+                        index={index}
+                        isRebaseInProgress={rebaseState?.isRebaseInProgress}
+                        cycleCommand={cycleCommand}
+                        removeTodo={removeTodo}
+                        setEditMessage={setEditMessage}
+                    />
+                ))}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {todo.commit.shortId}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {todo.commit.author}
-                  </span>
-                </div>
-              </div>
-
-              {/* Actions */}
-              {!rebaseState?.isRebaseInProgress && (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {todo.command === 'reword' && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => setEditMessage({ id: todo.id, message: todo.commit.message })}
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                  {todo.command !== 'drop' && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-red-500 hover:text-red-600"
-                      onClick={() => removeTodo(todo.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            </SortableContext>
+        </DndContext>
       </div>
 
       {/* Footer */}

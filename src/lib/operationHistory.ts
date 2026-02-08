@@ -13,7 +13,9 @@ export type OperationType =
   | 'rebase'
   | 'branch'
   | 'discard'
-  | 'revert';
+  | 'revert'
+  | 'stage-all'
+  | 'unstage-all';
 
 export interface GitOperation {
   id: string;
@@ -139,12 +141,39 @@ class OperationHistoryManager {
   }
 
   /**
+   * Move history pointer back and return operation to undo
+   */
+  performUndo(repoPath: string): GitOperation | null {
+    const state = this.getState(repoPath);
+    if (state.currentIndex >= 0) {
+      const op = state.operations[state.currentIndex];
+      if (op.undoable) {
+        state.currentIndex--;
+        return op;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Move history pointer forward and return operation to redo
+   */
+  performRedo(repoPath: string): GitOperation | null {
+    const state = this.getState(repoPath);
+    if (state.currentIndex < state.operations.length - 1) {
+      state.currentIndex++;
+      return state.operations[state.currentIndex];
+    }
+    return null;
+  }
+
+  /**
    * Get history statistics
    */
-  getStats(repoPath: string): { total: number; undoable: number } {
+  getStats(repoPath: string): { total: number; undoable: number; currentIndex: number } {
     const state = this.getState(repoPath);
     const undoable = state.operations.filter((op: GitOperation) => op.undoable).length;
-    return { total: state.operations.length, undoable };
+    return { total: state.operations.length, undoable, currentIndex: state.currentIndex };
   }
 }
 

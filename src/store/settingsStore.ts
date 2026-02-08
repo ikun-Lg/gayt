@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Settings } from '../types';
+import { defaultShortcuts } from '../lib/shortcuts';
+
+// Serializable shortcut definition
+export interface ShortcutDef {
+  key: string;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+}
 
 interface SettingsStore extends Settings {
   // Git username and password/token
@@ -16,10 +26,33 @@ interface SettingsStore extends Settings {
   setCommitLanguage: (lang: 'zh' | 'en') => void;
   setCommitFormat: (format: 'conventional' | 'custom') => void;
   setCustomPrompt: (prompt: string | null) => void;
+  
+  // Shortcuts
+  shortcuts: Record<string, ShortcutDef>;
+  setShortcut: (id: string, def: ShortcutDef) => void;
+  resetShortcuts: () => void;
+  
   // Sidebar
   sidebarWidth: number;
   setSidebarWidth: (width: number) => void;
 }
+
+// Helper to extract defaults
+const getDefaultShortcuts = () => {
+  const defaults: Record<string, ShortcutDef> = {};
+  for (const [id, config] of Object.entries(defaultShortcuts)) {
+    // Cast to any to access optional properties safely, or strict check
+    const c = config as any;
+    defaults[id] = {
+      key: c.key,
+      ctrlKey: !!c.ctrlKey,
+      altKey: !!c.altKey,
+      shiftKey: !!c.shiftKey,
+      metaKey: !!c.metaKey,
+    };
+  }
+  return defaults;
+};
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
@@ -35,6 +68,8 @@ export const useSettingsStore = create<SettingsStore>()(
       gitUsername: null,
       gitPassword: null,
       sidebarWidth: 320, // Default width
+      
+      shortcuts: getDefaultShortcuts(),
 
       // Actions
       setWorkDir: (dir) => set({ workDir: dir }),
@@ -47,6 +82,12 @@ export const useSettingsStore = create<SettingsStore>()(
       setGitUsername: (username) => set({ gitUsername: username }),
       setGitPassword: (password) => set({ gitPassword: password }),
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
+      
+      setShortcut: (id, def) => set((state) => ({
+        shortcuts: { ...state.shortcuts, [id]: def }
+      })),
+      
+      resetShortcuts: () => set({ shortcuts: getDefaultShortcuts() }),
     }),
     {
       name: 'gat-settings',
